@@ -219,6 +219,14 @@ export function mountP2P(root, hooks) {
     try {
       await hooks.prepare(roster, [0, 1], () => attempt === generation, { nativeCheckpoint: 1, nativePhysics: NETWORK_CORE_SHA256 });
       if (attempt !== generation) return;
+      if (!conn?.open) {
+        // The opponent disconnected while the arena was loading.
+        active = false;
+        hooks.restore();
+        leaveToLobby();
+        setStatus('The opponent left while the arena was loading. Share the code again to retry.');
+        return;
+      }
       room = new HostRoom({
         sim: hooks.sim, match: hooks.match, players: roster,
         send: payload => sendPayload(conn, payload),
@@ -273,6 +281,7 @@ export function mountP2P(root, hooks) {
   function onGuestClose(reason = 'connection_lost') {
     if (role !== 'host') return;
     guestJoined = guestReady = false;
+    conn = null;
     if (room?.active && !room.terminal) {
       room.finish(0, reason === 'left_match' ? 'opponent_left' : 'opponent_stalled');
     } else if (room && !room.terminal) {
