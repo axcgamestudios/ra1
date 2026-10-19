@@ -1,4 +1,4 @@
-import { mountOnline } from '../online/interface.js';
+import { mountP2P } from '../online/p2p.js';
 import { setCarMaterialQuality } from "../materials/car.js";
 import {FennecV2Post} from '../rendering/fennec-v2-post.js';
 import { ReferencePost } from '../rendering/reference-post.js';
@@ -836,7 +836,7 @@ async function startGame() {
       (a.state.paused =
         !online?.active && a.state.mode === "match" &&
         (ne || J.size > 0 || document.hidden || !document.hasFocus() || p)),
-      online?.active ? (he(), online.update(W, ke, s)) : a.state.paused || (a.state.mode === "match" && a.state.phase === "ended") || (a.state.mode === "freeplay" && J.size > 0)
+      online?.active ? ((l = online.opponentControls ?? A), he(), online.update(W, ke, s)) : a.state.paused || (a.state.mode === "match" && a.state.phase === "ended") || (a.state.mode === "freeplay" && J.size > 0)
         ? (he(), s.sync(W))
         : s.update(W, he, a.state.mode === "match" ? me : void 0),
       a.state.mode === "freeplay" &&
@@ -1124,8 +1124,7 @@ async function startGame() {
       }
       qe("home", open);
     },
-    casual: () => { pe.options.onLeave(); void online.open("casual"); },
-    ranked: () => { pe.options.onLeave(); void online.open("ranked"); },
+    casual: () => { pe.options.onLeave(); void online.open(); },
     match: () => { returnHomeAfter = "match"; ne = true; pe.show(); },
     freeplay: () => { pe.options.onLeave(); st(); },
     garage: () => { returnHomeAfter = "car"; ne = true; de.show(); },
@@ -1140,11 +1139,12 @@ async function startGame() {
   an.querySelector("#settings-button").addEventListener("click",event=>{
     event.preventDefault();event.stopImmediatePropagation();pauseMenu.show();
   },true);
-  online = mountOnline(an, {
+  online = mountP2P(an, {
     sim: n, match: a, visual: () => i,
     modal: open => { ne = open; qe("online", open); },
     resume: () => st(), home: () => home.show(), closeHome: () => home.close(),
     bots: () => { ne = true; pe.show(); },
+    kickoff: () => { _e(); },
     prepare: async (roster, order, valid, descriptor) => {
       goalPresentation?.finish({ cancel: true }); v(); p = false;
       const ordered = order.map(index => roster[index]);

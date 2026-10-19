@@ -2,12 +2,12 @@ import { _ } from "../core/class-fields.js";
 import { F, fn } from "../vendor/three.js";
 
 const Ps = {
-    cameraShake: !1,
+    cameraShake: !0,
     fov: 110,
     distance: 270,
     height: 100,
     angleDeg: -3,
-    stiffness: 0.35,
+    stiffness: 0.45,
     swivelSpeed: 4,
     transitionSpeed: 1,
     invertSwivel: !0,
