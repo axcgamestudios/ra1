@@ -1,11 +1,14 @@
 // Peer-to-peer host authority, ported from the dedicated server room.
 // The host browser runs the same deterministic WASM physics at 120 Hz, streams
-// binary snapshots at 20 Hz and only ever accepts inputs from the guest.
+// binary snapshots at 60 Hz and only ever accepts inputs from the guest.
+// Full native checkpoints ride every CHECKPOINT_EVERY-th snapshot (10 Hz) —
+// reconciliation only needs one after a divergence, not one per packet.
 import { encodeSnapshot, NEUTRAL, SIM_HZ, SNAPSHOT_HZ, INPUT_HZ, validControls, validSequence } from './protocol.js';
 import { STATE_LAYOUT } from '../physics/state-layout.js';
 
 const COMMAND_TICKS = SIM_HZ / INPUT_HZ;
 const SNAPSHOT_EVERY = SIM_HZ / SNAPSHOT_HZ;
+const CHECKPOINT_EVERY = 6;
 const STALL_MS = 10000;
 
 // The HOST assigns command duration, exactly like the dedicated server did:
@@ -93,7 +96,7 @@ export class HostRoom {
         this.tick = 0;
         this.epoch = 0;
         this.ack = 0;
-        this.stream = new InputStream({ staleMs: 250 });
+        this.stream = new InputStream({ staleMs: 500 });
         this.lastGuestInput = -Infinity;
         this.result = null;
         this.localControls = [...NEUTRAL];
@@ -102,6 +105,7 @@ export class HostRoom {
         this.hostControls = [...NEUTRAL];
         this.controlsScratch = { throttle: 0, steer: 0, pitch: 0, yaw: 0, roll: 0, jump: false, boost: false, handbrake: false };
         this.guestControls = [...NEUTRAL];
+        this.snapshotCount = 0;
     }
     setLocalControls(values) {
         for (let i = 0; i < 8; i++) this.localControls[i] = values[i];
@@ -136,7 +140,7 @@ export class HostRoom {
         this.resetArena();
         this.lastGuestInput = performance.now();
         this.onEvent?.({ type: 'kickoff' });
-        this.sendSnapshot();
+        this.sendSnapshot(true);
     }
     resetArena() {
         this.sim.resetKickoff(-1);
@@ -181,13 +185,13 @@ export class HostRoom {
             if (event === 'kickoff') this.afterGoal();
         }
         if (state.phase === 'ended') this.finish(state.winner, 'full_time');
-        if (this.tick % SNAPSHOT_EVERY === 0) this.sendSnapshot();
+        if (this.tick % SNAPSHOT_EVERY === 0) this.sendSnapshot(false);
         return true;
     }
     afterGoal() {
         this.resetArena();
         this.onEvent?.({ type: 'kickoff' });
-        this.sendSnapshot();
+        this.sendSnapshot(true);
     }
     snapshotValues() {
         return {
@@ -203,11 +207,13 @@ export class HostRoom {
     hostMeta() {
         return { seq: this.hostSeq, ticks: Math.min(this.hostTicks, COMMAND_TICKS), queued: 2, idle: 0, controls: this.hostControls };
     }
-    sendSnapshot() {
+    sendSnapshot(forceCheckpoint = false) {
         if (!this.send) return;
         try {
             const values = this.snapshotValues();
-            const binary = encodeSnapshot(this.nativeCheckpoints ? { ...values, checkpoint: this.checkpoint() } : values);
+            const withCheckpoint = this.nativeCheckpoints && (forceCheckpoint || this.snapshotCount % CHECKPOINT_EVERY === 0);
+            this.snapshotCount++;
+            const binary = encodeSnapshot(withCheckpoint ? { ...values, checkpoint: this.checkpoint() } : values);
             this.send(binary);
         } catch (error) {
             console.warn('p2p snapshot failed', error);
@@ -235,7 +241,7 @@ export class HostRoom {
         };
         this.active = false;
         try { this.send?.({ type: 'result', ...this.result }); } catch {}
-        this.sendSnapshot();
+        this.sendSnapshot(true);
         this.onEvent?.({ type: 'ended', ...this.result });
     }
     touch(now = performance.now()) { this.lastGuestInput = now; }

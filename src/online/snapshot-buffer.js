@@ -3,7 +3,7 @@ import { clamp, interpolateState } from './pose.js';
 // A monotonic SERVER-tick playback timeline. Arrival jitter is a buffer-sizing
 // signal, never the time coordinate used to interpolate between physics states.
 export class SnapshotBuffer {
-    constructor() { this.samples = []; this.epoch = -1; this.playhead = null; this.lastRender = null; this.jitterMs = 0; this.delayMs = 100; this.underflows = 0; this.rejected = 0; this.rebases = 0; this.ageMs = 0; }
+    constructor() { this.samples = []; this.epoch = -1; this.playhead = null; this.lastRender = null; this.jitterMs = 0; this.delayMs = 30; this.underflows = 0; this.rejected = 0; this.rebases = 0; this.ageMs = 0; }
     add(snapshot, state, now) {
         const last = this.samples.at(-1), time = snapshot.tick * 1000 / SIM_HZ;
         if (last && (snapshot.epoch < this.epoch || snapshot.epoch === this.epoch && snapshot.tick <= last.tick)) {
@@ -16,13 +16,17 @@ export class SnapshotBuffer {
             this.playhead = null;
             this.lastRender = null;
             this.jitterMs = 0;
-            this.delayMs = 100;
+            this.delayMs = 30;
         }
         else if (last) {
             const deviation = Math.abs((now - last.arrival) - (time - last.time));
             this.jitterMs += .1 * (Math.min(200, deviation) - this.jitterMs);
         }
-        this.delayMs = clamp(100 + this.jitterMs * 2, 100, 200);
+        // 60 Hz snapshots arrive every ~17 ms, so the interpolation buffer only
+        // needs one cadence interval of jitter headroom. The old 100 ms base
+        // delayed the ball and the opponent by a full tenth of a second more
+        // than the network itself did.
+        this.delayMs = clamp(30 + this.jitterMs * 2, 30, 120);
         this.samples.push({ state, time, tick: snapshot.tick, arrival: now });
         if (this.samples.length > 48)
             this.samples.shift();
@@ -63,5 +67,5 @@ export class SnapshotBuffer {
         interpolateState(out, lower.state, upper.state, t, span / 1000);
         return true;
     }
-    clear() { this.samples.length = 0; this.playhead = this.lastRender = null; this.epoch = -1; this.jitterMs = 0; this.delayMs = 100; }
+    clear() { this.samples.length = 0; this.playhead = this.lastRender = null; this.epoch = -1; this.jitterMs = 0; this.delayMs = 30; }
 }

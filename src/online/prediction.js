@@ -97,7 +97,7 @@ export class Prediction {
             return;
         if (previous && snapshot.epoch === previous.epoch && snapshot.tick === previous.tick && snapshot.match.phase === previous.match.phase)
             return;
-        if (previous && now - this.lastReceive > 300) {
+        if (previous && now - this.lastReceive > 500) {
             this.needsResync = true;
             this.timeline.clear();
         }
@@ -202,7 +202,10 @@ export class Prediction {
         this.last = now;
         const updateStarted = performance.now();
         this.reconcile();
-        const playing = connected && now - this.lastReceive < 300 && this.latest.match.phase === 'playing';
+        // Keep driving the local car through brief transport hiccups (packet
+        // retransmissions): 600 ms of prediction beats a frozen car. Beyond that
+        // the timeline is too stale to trust and the freeze path takes over.
+        const playing = connected && now - this.lastReceive < 600 && this.latest.match.phase === 'playing';
         if (playing) {
             this.accumulator += Math.min(elapsed, 100) * this.rate;
             const due = Math.floor(this.accumulator / DT + 1e-9), count = Math.min(12, due);

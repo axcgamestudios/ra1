@@ -4,7 +4,7 @@ import { STATE_LAYOUT, CAR_STATE_STRIDE, ro } from '../physics/state-layout.js';
 export const PROTOCOL = 2;
 export const INPUT_META_BYTES = 40;
 export const SIM_HZ = 120;
-export const SNAPSHOT_HZ = 20;
+export const SNAPSHOT_HZ = 60;
 export const INPUT_HZ = 60;
 export const PHYSICS_SHA256 = '4d3b9c9f2c2227bc72d292fb5f294ab1f435e34b8ac8300527ee9d833a829405';
 export const MAGIC = 0x52415731;

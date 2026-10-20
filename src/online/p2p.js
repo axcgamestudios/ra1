@@ -17,6 +17,33 @@ const READY_TIMEOUT = 90000;
 const PING_INTERVAL = 2000;
 const NAME_KEY = 'arena.p2p.name';
 
+// ICE: several STUN servers first — a direct path always beats any relay. The
+// PeerJS cloud TURN stays as the final fallback for hard NATs; a custom config
+// REPLACES the default entirely, so those TURN entries must be repeated here.
+const ICE_SERVERS = [
+  { urls: 'stun:stun.l.google.com:19302' },
+  { urls: 'stun:stun1.l.google.com:19302' },
+  { urls: 'stun:stun.cloudflare.com:3478' },
+  { urls: 'stun:global.stun.twilio.com:3478' },
+  { urls: ['turn:eu-0.turn.peerjs.com:3478', 'turn:us-0.turn.peerjs.com:3478'], username: 'peerjs', credential: 'peerjsp' }
+];
+const PEER_OPTIONS = { debug: 0, config: { iceServers: ICE_SERVERS, sdpSemantics: 'unified-plan' } };
+
+// Test-only network conditioning (?netSim=delayMs,jitterMs,lossPercent): applies
+// one-way delay, jitter and loss to both sends and receives. Inactive otherwise.
+const netSimRaw = new URLSearchParams(location.search).get('netSim');
+const netSimValues = netSimRaw?.split(',').map(Number);
+const NET_SIM = netSimValues?.length === 3 && netSimValues.every(Number.isFinite)
+  ? { delay: Math.max(0, netSimValues[0] || 0), jitter: Math.max(0, netSimValues[1] || 0), loss: Math.min(0.5, Math.max(0, (netSimValues[2] || 0) / 100)) }
+  : null;
+function gate(task, droppable = true) {
+  if (!NET_SIM) { task(); return; }
+  // SCTP unordered-reliable retransmits control messages, so only loss-tolerant
+  // traffic (snapshots, inputs with duplicates, pings) may be dropped here.
+  if (droppable && Math.random() < NET_SIM.loss) return;
+  setTimeout(task, NET_SIM.delay + Math.random() * NET_SIM.jitter);
+}
+
 const friendly = {
   peer_unavailable: 'Room not found. Check the code — rooms close when the host leaves.',
   unavailable_id: 'That room code is already taken. Generating a new one…',
@@ -36,7 +63,9 @@ function generateCode() {
   return Array.from(bytes, value => CODE_ALPHABET[value % CODE_ALPHABET.length]).join('');
 }
 function sendPayload(connection, payload) {
-  if (connection?.open) { try { connection.send(payload); } catch { /* transient buffer full */ } }
+  if (!connection?.open) return;
+  const droppable = payload instanceof ArrayBuffer || payload?.type === 'input' || payload?.type === 'ping';
+  gate(() => { try { connection.send(payload); } catch { /* transient buffer full */ } }, droppable);
 }
 function applyControlsValues(target, values) {
   target.throttle = values[0];
@@ -53,7 +82,7 @@ export function mountP2P(root, hooks) {
   let peer = null, conn = null, room = null, prediction = null;
   let role = null, active = false, preparing = false, lastResult = null;
   let code = '', guestReady = false, hostPrepared = false, guestJoined = false, roomReady = false, hostName = '';
-  let generation = 0, rtt = null, lastSnapshotAt = 0, latestSnapshot = null;
+  let generation = 0, rtt = null, lastSnapshotAt = 0, latestSnapshot = null, snapshotArrivals = [];
   let pingTimer = 0, readyTimer = 0, poll = 0, lastNetworkDisplay = 0;
   let oldButtons = [], lastDirection = 0, roster = null;
 
@@ -175,7 +204,7 @@ export function mountP2P(root, hooks) {
     roster = [{ id: 'host', name, team: 0, visual: hooks.visual() }];
     controls(); setStatus('Creating your room on the signaling server…');
     code = generateCode();
-    peer = new Peer(ID_PREFIX + code, { debug: 0 });
+    peer = new Peer(ID_PREFIX + code, PEER_OPTIONS);
     const attempt = ++generation;
     const createTimeout = setTimeout(() => {
       if (attempt === generation && !roomReady) {
@@ -209,7 +238,7 @@ export function mountP2P(root, hooks) {
     let saidHello = false;
     setStatus('Opponent connecting…');
     const helloTimeout = setTimeout(() => { if (!saidHello) { try { connection.close(); } catch {} } }, CONNECT_TIMEOUT);
-    connection.on('data', data => {
+    connection.on('data', data => gate(() => {
       if (attempt !== generation) return;
       if (data instanceof ArrayBuffer || ArrayBuffer.isView(data)) return;
       if (data?.type === 'hello' && !saidHello) {
@@ -218,7 +247,7 @@ export function mountP2P(root, hooks) {
         return;
       }
       onHostMessage(data);
-    });
+    }, data?.type === 'input' || data?.type === 'ping'));
     connection.on('close', () => { if (attempt === generation) onGuestClose(); });
     connection.on('error', () => {});
   }
@@ -340,19 +369,21 @@ export function mountP2P(root, hooks) {
     role = 'guest'; code = target; guestJoined = true; guestReady = false;
     controls(); setStatus(`Connecting to room ${target}…`);
     const attempt = ++generation;
-    peer = new Peer(undefined, { debug: 0 });
+    peer = new Peer(undefined, PEER_OPTIONS);
     const connectTimeout = setTimeout(() => {
       if (attempt === generation && !conn?.open) { setStatus('Could not reach that room. Check the code and retry.'); leaveToLobby(); }
     }, CONNECT_TIMEOUT);
     peer.on('open', () => {
       if (attempt !== generation) { clearTimeout(connectTimeout); return; }
-      conn = peer.connect(ID_PREFIX + target, { reliable: true });
+      // Unordered delivery: a lost packet never blocks newer snapshots (no
+      // head-of-line stall). Duplicates and reordering are dropped by tick/seq.
+      conn = peer.connect(ID_PREFIX + target, { reliable: false });
       conn.on('open', () => {
         clearTimeout(connectTimeout);
         setStatus('Connected. Introducing your car…');
         sendPayload(conn, { type: 'hello', protocol: PROTOCOL, physics: PHYSICS_SHA256, nativeCheckpoint: 1, name, visual: hooks.visual() });
       });
-      conn.on('data', data => { if (attempt === generation) onGuestData(data, attempt); });
+      conn.on('data', data => gate(() => { if (attempt === generation) onGuestData(data, attempt); }, data instanceof ArrayBuffer || ArrayBuffer.isView(data) || data?.type === 'pong'));
       conn.on('close', () => { if (attempt === generation) onHostLost(); });
       conn.on('error', () => {});
     });
@@ -416,6 +447,8 @@ export function mountP2P(root, hooks) {
     let snapshot;
     try { snapshot = decodeSnapshot(buffer); } catch { return; }
     latestSnapshot = snapshot; lastSnapshotAt = performance.now();
+    snapshotArrivals.push(lastSnapshotAt);
+    if (snapshotArrivals.length > 240) snapshotArrivals.splice(0, snapshotArrivals.length - 240);
     prediction?.receive(snapshot, 1);
     const remote = snapshot.inputStates?.[0]?.controls;
     if (remote) applyControlsValues(opponentControls, remote);
@@ -516,7 +549,7 @@ export function mountP2P(root, hooks) {
     prediction?.dispose(); prediction = null;
     const wasActive = active;
     active = false; role = null; hostPrepared = false; guestJoined = guestReady = false; roomReady = false;
-    roster = null; latestSnapshot = null; rtt = null;
+    roster = null; latestSnapshot = null; rtt = null; snapshotArrivals = [];
     teardownSignaling();
     if (wasActive) hooks.restore();
     root.classList.remove('online-active');
@@ -538,7 +571,7 @@ export function mountP2P(root, hooks) {
     prediction?.dispose(); prediction = null;
     const wasActive = active;
     active = false; role = null; hostPrepared = false; guestJoined = guestReady = false; roomReady = false;
-    roster = null; latestSnapshot = null; rtt = null;
+    roster = null; latestSnapshot = null; rtt = null; snapshotArrivals = [];
     teardownSignaling();
     root.classList.remove('online-active');
     delete root.dataset.onlineTick; delete root.dataset.onlinePhase;
@@ -609,7 +642,13 @@ export function mountP2P(root, hooks) {
       } else if (prediction) {
         const usable = conn?.open && now - lastSnapshotAt < 1000;
         prediction.update(now, neutral ? NEUTRAL : controlsArray(controls),
-          (seq, values, metadata) => { sendPayload(conn, { type: 'input', seq, epoch: metadata.epoch, controls: values }); },
+          (seq, values, metadata) => {
+            const message = { type: 'input', seq, epoch: metadata.epoch, controls: values };
+            sendPayload(conn, message);
+            // Loss immunity: a second copy rides a separate SCTP message a few
+            // ms later; the host drops duplicates by sequence number.
+            setTimeout(() => sendPayload(conn, message), 8);
+          },
           clock, usable, { render });
         hooks.match.state.paused = false;
         if (render && now - lastNetworkDisplay > 500) {
@@ -624,7 +663,11 @@ export function mountP2P(root, hooks) {
       }
     },
     diagnostics() {
+      const arrivals = snapshotArrivals;
+      const span = arrivals.length > 1 ? (arrivals.at(-1) - arrivals[0]) / 1000 : 0;
       return { active, role, code, guestJoined, guestReady, hostPrepared, connected: !!conn?.open,
+        snapshotRate: span > 0.25 ? Math.round((arrivals.length - 1) / span) : 0,
+        prediction: role === 'guest' ? prediction?.metrics() ?? null : null,
         tick: role === 'host' ? room?.tick : latestSnapshot?.tick ?? 0,
         phase: role === 'host' ? hooks.match.state.phase : latestSnapshot?.match.phase,
         epoch: role === 'host' ? room?.epoch : latestSnapshot?.epoch,
