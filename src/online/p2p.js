@@ -52,7 +52,7 @@ function applyControlsValues(target, values) {
 export function mountP2P(root, hooks) {
   let peer = null, conn = null, room = null, prediction = null;
   let role = null, active = false, preparing = false, lastResult = null;
-  let code = '', guestReady = false, hostPrepared = false, guestJoined = false;
+  let code = '', guestReady = false, hostPrepared = false, guestJoined = false, roomReady = false, hostName = '';
   let generation = 0, rtt = null, lastSnapshotAt = 0, latestSnapshot = null;
   let pingTimer = 0, readyTimer = 0, poll = 0, lastNetworkDisplay = 0;
   let oldButtons = [], lastDirection = 0, roster = null;
@@ -119,12 +119,15 @@ export function mountP2P(root, hooks) {
     codeInput.disabled = !!role || preparing;
     input.disabled = !!role || preparing || active;
     find('.online-private-options').hidden = !!role || !!lastResult;
-    find('.online-private-lobby').hidden = !(role && guestJoined && !lastResult);
+    // The host must see the room code as soon as the room exists — before the
+    // guest joins — otherwise there is nothing to share with a friend.
+    const inLobby = !lastResult && ((role === 'host' && roomReady) || (role === 'guest' && guestJoined));
+    find('.online-private-lobby').hidden = !inLobby;
     find('[data-p2p="again"]').hidden = !lastResult;
     find('[data-p2p="start"]').hidden = role !== 'host';
     find('[data-p2p="start"]').disabled = !(role === 'host' && guestReady && hostPrepared && !preparing && !room?.active && !room?.terminal);
     find('[data-p2p="leave-room"]').disabled = preparing && !role;
-    if (role && guestJoined && !lastResult) {
+    if (inLobby) {
       find('[data-room-code]').textContent = code;
       const list = find('.online-private-roster'); list.replaceChildren();
       for (const player of roster ?? []) {
@@ -135,6 +138,17 @@ export function mountP2P(root, hooks) {
         const ready = player.team === 1 ? (guestReady ? ' · READY' : ' · LOADING…') : ' · READY';
         row.textContent = `${side} · ${player.name}${you}${ready}`;
         list.append(row);
+      }
+      if (role === 'host' && !guestJoined) {
+        const waiting = document.createElement('p');
+        waiting.className = 'orange-team';
+        waiting.textContent = 'ORANGE · Waiting for your friend to join…';
+        list.append(waiting);
+      } else if (role === 'guest' && !roster) {
+        const waiting = document.createElement('p');
+        waiting.className = 'blue-team';
+        waiting.textContent = 'BLUE · Waiting for the host…';
+        list.append(waiting);
       }
     }
   }
@@ -157,14 +171,22 @@ export function mountP2P(root, hooks) {
     if (role || preparing) return;
     const name = playerName();
     if (!name) return;
-    role = 'host'; guestJoined = guestReady = hostPrepared = false; roster = null;
+    role = 'host'; roomReady = false; hostName = name; guestJoined = guestReady = hostPrepared = false;
+    roster = [{ id: 'host', name, team: 0, visual: hooks.visual() }];
     controls(); setStatus('Creating your room on the signaling server…');
     code = generateCode();
     peer = new Peer(ID_PREFIX + code, { debug: 0 });
     const attempt = ++generation;
+    const createTimeout = setTimeout(() => {
+      if (attempt === generation && !roomReady) {
+        setStatus(explain({ type: 'network' }));
+        leaveToLobby();
+      }
+    }, CONNECT_TIMEOUT);
     peer.on('open', () => {
       if (attempt !== generation) return;
-      find('[data-room-code]').textContent = code;
+      clearTimeout(createTimeout);
+      roomReady = true;
       setStatus('Room ready. Share the code with your friend and wait for them to join.');
       controls();
     });
@@ -175,6 +197,7 @@ export function mountP2P(root, hooks) {
     });
     peer.on('error', error => {
       if (attempt !== generation) return;
+      clearTimeout(createTimeout);
       if (error?.type === 'unavailable-id') { leaveToLobby(); createRoom(); return; }
       setStatus(explain(error));
       if (!conn) leaveToLobby();
@@ -208,7 +231,7 @@ export function mountP2P(root, hooks) {
     }
     if (!validName(message.name)) { try { conn.close(); } catch {} setStatus('The joining player sent an invalid name.'); return; }
     roster = [
-      { id: 'host', name: playerName(), team: 0, visual: hooks.visual() },
+      { id: 'host', name: hostName, team: 0, visual: hooks.visual() },
       { id: 'guest', name: message.name, team: 1, visual: typeof message.visual === 'string' ? message.visual : 'octane-original' }
     ];
     guestJoined = true;
@@ -287,6 +310,7 @@ export function mountP2P(root, hooks) {
     } else if (room && !room.terminal) {
       // Opponent left before kickoff: back to the lobby, keep the room code.
       room.dispose(); room = null; hostPrepared = false;
+      roster = [{ id: 'host', name: hostName, team: 0, visual: hooks.visual() }];
       if (active) { active = false; root.classList.remove('online-active'); hud.hidden = true; hooks.restore(); }
       setStatus('The opponent left before kickoff. Share the code again to retry.');
       controls();
@@ -491,7 +515,7 @@ export function mountP2P(root, hooks) {
     room?.dispose(); room = null;
     prediction?.dispose(); prediction = null;
     const wasActive = active;
-    active = false; role = null; hostPrepared = false; guestJoined = guestReady = false;
+    active = false; role = null; hostPrepared = false; guestJoined = guestReady = false; roomReady = false;
     roster = null; latestSnapshot = null; rtt = null;
     teardownSignaling();
     if (wasActive) hooks.restore();
@@ -513,7 +537,7 @@ export function mountP2P(root, hooks) {
     room?.dispose(); room = null;
     prediction?.dispose(); prediction = null;
     const wasActive = active;
-    active = false; role = null; hostPrepared = false; guestJoined = guestReady = false;
+    active = false; role = null; hostPrepared = false; guestJoined = guestReady = false; roomReady = false;
     roster = null; latestSnapshot = null; rtt = null;
     teardownSignaling();
     root.classList.remove('online-active');
