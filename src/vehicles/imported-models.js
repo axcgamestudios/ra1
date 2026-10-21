@@ -52,7 +52,11 @@ const sketchfabModels = createSketchfabModels({
   makeBallMaterial: source => createImportedBallMaterial(daylightMaterialTypes, source),
   load: async url => {
     url=resolveFennecV2Asset(url);
-    if (url.includes('/tripo/') || url.includes('/spectre/') || url.includes('/fennec-v2/') || url.includes('/challenger/') || url.includes('/octane/') || url.includes('/vanguard/') || url.includes('/vesper/') || url.includes('/takumi/')) fennecV2Lighting = await loadFennecV2Lighting();
+    // Every imported body uses the Fennec v2 car shader, whose reflections read
+    // the shared HDR cube. Awaiting it for ALL car folders (not just the ones
+    // listed before) removes a load-order race that produced reflections-free,
+    // near-black bodies on Amethyst and Octane Original after a garage change.
+    if (!url.includes('/ball/')) fennecV2Lighting = await loadFennecV2Lighting();
     return new ho().loadAsync(url);
   },
 });

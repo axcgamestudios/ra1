@@ -135,6 +135,17 @@ class PhysicsSimulation {
     // Commit only after successful preparation; preserve clock/camera bridge identity.
     for (const key of Object.getOwnPropertyNames(candidate)) this[key] = candidate[key];
   }
+  // Garage car swaps reuse the already-instantiated WASM module: only the car
+  // hitbox preset changes, so re-fetching and re-instantiating RocketSim made
+  // every body switch take seconds. Same engine, same module, new car config.
+  async reconfigureCar(selection, kind, team, unlimited, canCommit = () => true) {
+    if (selection.engine !== this.physicsSelection.engine) return this.switchPhysics(selection, kind, false, team, unlimited, canCommit);
+    if (!canCommit()) throw new Error("Session changed while loading; please apply again.");
+    this.physicsSelection = selection;
+    this.configureCars(kind, false, team);
+    this.setUnlimitedBoost(unlimited);
+    if (!this.state.every(Number.isFinite)) throw new Error("Invalid replacement physics state");
+  }
   setControls(e, t) {
     const n = this.module.HEAPF32.buffer;
     (!this.controlsView || this.controlsView.buffer !== n) &&

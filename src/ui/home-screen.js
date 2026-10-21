@@ -1,4 +1,6 @@
 // DOM overlay over the existing arena. The game owns the paused scene and camera.
+import { Ks } from '../input/controller-selection.js';
+
 export function mountHome(root, actions) {
   const panel = document.createElement('section');
   panel.className = 'arcade-home arena-home';
@@ -48,7 +50,10 @@ export function mountHome(root, actions) {
   }
   function gamepad(now) {
     if (!visible) return;
-    const pad = [...(navigator.getGamepads?.() ?? [])].find(Boolean);
+    // Follow the SELECTED controller (same source as gameplay) instead of the
+    // first entry in navigator.getGamepads(), which may be a different device
+    // (e.g. a wheel or a second pad) when several gamepads are connected.
+    const pad = Ks();
     if (pad) {
       const axis = pad.axes[1] ?? 0;
       const direction = pad.buttons[12]?.pressed || axis < -0.55 ? -1 : pad.buttons[13]?.pressed || axis > 0.55 ? 1 : 0;
@@ -74,7 +79,7 @@ export function mountHome(root, actions) {
     visible = true; dirty = true; panel.hidden = false; root.classList.add('home-open');
     actions.pause(true);
     setPage('main');
-    const pad = [...(navigator.getGamepads?.() ?? [])].find(Boolean);
+    const pad = Ks();
     previousConfirm = !!pad?.buttons[0]?.pressed; previousCancel = !!pad?.buttons[1]?.pressed;
     lastDirection = 0;
     poll = requestAnimationFrame(gamepad);

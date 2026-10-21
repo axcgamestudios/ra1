@@ -3,6 +3,7 @@ import { Transport } from './transport.js';
 import { Prediction } from './prediction.js';
 import { controlsArray, validName, NEUTRAL } from './protocol.js';
 import { accountClient, currentAccount } from './account.js';
+import { Ks } from '../input/controller-selection.js';
 const storage = {
   get(key) { try { return JSON.parse(sessionStorage.getItem(`arena.online.${key}`)); } catch { return null; } },
   set(key, value) { try { value === null ? sessionStorage.removeItem(`arena.online.${key}`) : sessionStorage.setItem(`arena.online.${key}`, JSON.stringify(value)); } catch {} },
@@ -55,7 +56,9 @@ export function mountOnline(root, hooks) {
   function hide() { panel.hidden = true; hooks.modal(false); root.classList.remove('online-menu'); cancelAnimationFrame(poll); }
   function gamepad(now) {
     if (panel.hidden) return;
-    const pad = [...(navigator.getGamepads?.() ?? [])].find(Boolean);
+    // Follow the SELECTED controller so online menus match gameplay input
+    // when several gamepads are connected.
+    const pad = Ks();
     if (pad) {
       const buttons = pad.buttons.map(b => b.pressed);
       const direction = buttons[13] || buttons[15] || pad.axes[1] > 0.55 || pad.axes[0] > 0.55 ? 1 : buttons[12] || buttons[14] || pad.axes[1] < -0.55 || pad.axes[0] < -0.55 ? -1 : 0;

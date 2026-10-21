@@ -1,4 +1,6 @@
 // A small menu above the frozen arena; simulation ownership stays with the game.
+import { Ks } from '../input/controller-selection.js';
+
 export function mountPauseMenu(root, actions) {
   const panel = document.createElement('section');
   panel.className = 'arena-pause';
@@ -10,7 +12,7 @@ export function mountPauseMenu(root, actions) {
   root.append(panel);
   const buttons = [...panel.querySelectorAll('[data-pause]')];
   let open = false, poll = 0, previousConfirm = false, previousCancel = false, previousDirection = 0;
-  const activePad = () => [...(navigator.getGamepads?.() ?? [])].find(Boolean);
+  const activePad = () => Ks();
   const directionOf = pad => pad?.buttons[12]?.pressed || (pad?.axes[1] ?? 0) < -0.55 ? -1 : pad?.buttons[13]?.pressed || (pad?.axes[1] ?? 0) > 0.55 ? 1 : 0;
   function moveFocus(direction) {
     const index = buttons.indexOf(document.activeElement);

@@ -585,6 +585,9 @@ async function startGame() {
     try {
     const theme = getTheme();
     N.updateSceneryDetail(camera);
+    // Blob contact shadows track final subject transforms right before the
+    // draw, covering previews, gameplay and replays on every quality preset.
+    N.updateContactShadows();
     referenceLighting.update(N, theme);
     if (theme === 'realistic') {
       if (fennecV2Post) { fennecV2Post.dispose(); fennecV2Post = null; }
@@ -1101,7 +1104,10 @@ async function startGame() {
     try {
       const team = visual === "game-car" || isSketchfabCar(visual) ? 1 : 0;
       const draft = await N.prepareLiveCar(visual, team);
-      await n.switchPhysics(resolvePhysicsSelection(window.location.search, visual), visual === "flat-car" ? "flat" : "default", false, team,
+      // Instant swap: the live WASM module is reused and only the car hitbox
+      // preset is reconfigured, instead of re-fetching and re-instantiating
+      // the whole physics engine on every garage body change.
+      await n.reconfigureCar(resolvePhysicsSelection(window.location.search, visual), visual === "flat-car" ? "flat" : "default", team,
         V.boostOption === "unlimited", () => a.state.mode !== "match" && generation === d);
       N.commitLiveCar(draft); N.cars[r].add(Y.root);
       i = visual; e = team; t = getTeamAssignment(i === "flat-car"); pe.options.playerTeam = t.playerTeam;

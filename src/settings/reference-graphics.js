@@ -6,7 +6,7 @@ export const REFERENCE_GRAPHICS_DEFAULTS = Object.freeze({
   renderer: 'makeup', palette: '8', sunset: 0, exposure: 1,
   roughness: .38, metalness: .73, pearlShift: .015, reflection: 2.5,
   lightPower: 3.5, ao: .53, bloom: .19, bloomThreshold: .6,
-  makeupBloom: .27, makeupAO: .36, shadowBlur: 1.7, fog: .65,
+  makeupBloom: .27, makeupAO: .36, shadowBlur: 2.1, fog: .65,
   autoExposure: false, lightweightLook: false,
   sunAzimuth: Math.atan2(-.48, .29) * 180 / Math.PI,
   sunElevation: Math.atan2(.83, Math.hypot(.48, .29)) * 180 / Math.PI,

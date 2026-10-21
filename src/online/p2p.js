@@ -8,6 +8,7 @@ import { HostRoom } from './p2p-room.js';
 import { Prediction } from './prediction.js';
 import { controlsArray, decodeSnapshot, validName, NEUTRAL, PROTOCOL, PHYSICS_SHA256 } from './protocol.js';
 import { NETWORK_CORE_SHA256 } from '../physics/network-core.js';
+import { Ks } from '../input/controller-selection.js';
 
 const ID_PREFIX = 'ra1-v1-';
 const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
@@ -122,7 +123,9 @@ export function mountP2P(root, hooks) {
 
   function gamepadPoll(now) {
     if (panel.hidden) return;
-    const pad = [...(navigator.getGamepads?.() ?? [])].find(Boolean);
+    // Follow the SELECTED controller so the P2P room menus match gameplay
+    // input when several gamepads are connected.
+    const pad = Ks();
     if (pad) {
       const buttons = pad.buttons.map(button => button.pressed);
       const direction = buttons[13] || buttons[15] || pad.axes[1] > 0.55 || pad.axes[0] > 0.55 ? 1 : buttons[12] || buttons[14] || pad.axes[1] < -0.55 || pad.axes[0] < -0.55 ? -1 : 0;

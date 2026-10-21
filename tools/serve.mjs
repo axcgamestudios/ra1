@@ -32,6 +32,7 @@ const contentTypes = {
   ".html": "text/html; charset=utf-8",
   ".ico": "image/x-icon",
   ".js": "application/javascript; charset=utf-8",
+  ".mjs": "application/javascript; charset=utf-8",
   ".json": "application/json; charset=utf-8",
   ".onnx": "application/octet-stream",
   ".svg": "image/svg+xml",

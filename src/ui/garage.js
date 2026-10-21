@@ -47,19 +47,22 @@ export class Garage {
   preload() {
     if (this.preparing) return this.preparing;
     this.preparing = (async () => {
-      for (const { id } of [...GARAGE_CARS].sort((a, b) => Number(b.id === this.selected) - Number(a.id === this.selected))) {
-        const { canvas, ready } = this.stage.attach(id);
-        this.overlay.querySelector(`[data-car-stage="${id}"]`).append(canvas);
-        try {
-          await ready;
-          this.overlay.querySelector(`[data-car-status="${id}"]`)?.remove();
-        } catch (error) {
-          this.overlay.querySelector(`[data-car-status="${id}"]`).textContent = 'Model unavailable';
-          throw error;
-        }
-        // Yield between previews so input and loading feedback remain responsive.
-        await new Promise(resolve => setTimeout(resolve, 0));
-      }
+      // Load every body in parallel so the hero preview and cards fill in as
+      // each model arrives. The previous sequential queue made the last cars
+      // wait for every earlier download, leaving the selection invisible for
+      // a long time after a body change.
+      const stages = [...GARAGE_CARS].sort((a, b) => Number(b.id === this.selected) - Number(a.id === this.selected))
+        .map(({ id }) => {
+          const { canvas, ready } = this.stage.attach(id);
+          this.overlay.querySelector(`[data-car-stage="${id}"]`).append(canvas);
+          return ready
+            .then(() => { this.overlay.querySelector(`[data-car-status="${id}"]`)?.remove(); })
+            .catch(() => {
+              const status = this.overlay.querySelector(`[data-car-status="${id}"]`);
+              if (status) status.textContent = 'Model unavailable';
+            });
+        });
+      await Promise.all(stages);
       await this.stage.preload();
     })();
     return this.preparing;

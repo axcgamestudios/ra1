@@ -24,6 +24,7 @@ import { BallLocator } from "../effects/ball-locator.js";
 import { GS, JS, KS, OS, RS, WS, loadParkArt } from "../arena/geometry.js";
 import { Dp, Fp, Hp, Lp, Np, Wh, XA, Xh, YS, bc, cA, ew, gg, jg, mg, pg, vg, xn } from "../vehicles/diagnostics.js";
 import { localQualityProfiles } from "../settings/schema.js";
+import { createContactShadow } from "./contact-shadows.js";
 
 class GameWorld {
   constructor(e, t = "game-car", n = localQualityProfiles.balanced, r = !0) {
@@ -72,6 +73,10 @@ class GameWorld {
     _(this, "carSunTarget", new It());
     _(this, "ballSunTarget", new It());
     _(this, "shadowFocus", new F());
+    _(this, "contactUp", new F());
+    _(this, "contactForward", new F());
+    _(this, "ballContactShadow");
+    _(this, "carContactShadows", []);
     _(this, "carVisual");
     _(this, "quality", n);
     _(this, "turf");
@@ -93,6 +98,11 @@ class GameWorld {
     const s = new eo(8956671, 0.35);
     (s.position.set(-2e3, 2e3, -2e3),
       this.scene.add(s),
+      // Warm counter-fill wraps the shading from the sun-facing side, giving
+      // cars and the ball a subtle rim that reads as bounced stadium light.
+      (this.bounceLight = new eo(0xffd9b0, 0.3)),
+      this.bounceLight.position.set(2300, 1350, 2600),
+      this.scene.add(this.bounceLight),
       (this.turf = GS()),
       (this.sky = KS()),
       this.scene.add(this.turf),
@@ -114,6 +124,9 @@ class GameWorld {
       (this.indicatorHeightRing = new Ee(o, A)));
     for (const l of [this.indicatorRing, this.indicatorHeightRing])
       ((l.rotation.x = -Math.PI / 2), (l.renderOrder = 2), this.scene.add(l));
+    // Grounding blob shadows run on every preset, including Potato/Balanced
+    // where no shadow maps exist at all.
+    this.ballContactShadow = createContactShadow(this.scene, 1);
     this.markRenderTreeChanged();
     const l = new WeakRef(this);
     subscribeTheme(() => {
@@ -617,7 +630,7 @@ class GameWorld {
     var t, n;
     const e = this.cars[0];
     (e &&
-      this.updateSubjectShadow(this.carSun, this.carSunTarget, e.position, cA),
+      this.updateSubjectShadow(this.carSun, this.carSunTarget, e.position, cA, this.subjectGap(e.position, 60)),
       (t = this.opponentSun) != null &&
         t.visible &&
         (n = this.cars[1]) != null &&
@@ -627,26 +640,85 @@ class GameWorld {
           this.opponentSunTarget,
           this.cars[1].position,
           cA,
+          this.subjectGap(this.cars[1].position, 60),
         ),
       this.updateSubjectShadow(
         this.ballSun,
         this.ballSunTarget,
         this.ball.position,
         Lp,
+        this.subjectGap(this.ball.position, this.ballRadius),
       ));
   }
-  updateSubjectShadow(e, t, n, r) {
-    const s = (r * 2) / bc,
-      a = Math.round(n.dot(Xh) / s) * s,
-      o = Math.round(n.dot(Fp) / s) * s,
-      A = n.dot(XA);
-    (this.shadowFocus
+  subjectGap(position, restHeight) {
+    return Math.max(0, position.y - restHeight);
+  }
+  // Blob shadows run on every preset; they track the same sun projection as
+  // the dynamic shadow maps so the two blend into one grounded shadow.
+  updateContactShadows() {
+    const sun = this.referenceSunOffset ?? Wh;
+    const dirX = -sun.x / sun.y, dirZ = -sun.z / sun.y;
+    if (this.ball?.visible) {
+      const gap = this.subjectGap(this.ball.position, this.ballRadius);
+      const radius = this.ballRadius * 2.42;
+      this.ballContactShadow?.place(
+        this.ball.position.x + dirX * gap * 0.85,
+        this.ball.position.z + dirZ * gap * 0.85,
+        Math.atan2(dirZ, dirX),
+        gap,
+        radius,
+        radius * (1 + Math.min(gap / 900, 1) * 0.34),
+        1,
+      );
+    } else this.ballContactShadow?.hide();
+    while (this.carContactShadows.length < this.cars.length)
+      this.carContactShadows.push(createContactShadow(this.scene, 1));
+    for (let index = 0; index < this.carContactShadows.length; index++) {
+      const blob = this.carContactShadows[index], car = this.cars[index];
+      if (!car || index >= this.cars.length || !car.visible) { blob.hide(); continue; }
+      const gap = this.subjectGap(car.position, 55);
+      if (gap > 2400) { blob.hide(); continue; }
+      this.contactForward.set(1, 0, 0).applyQuaternion(car.quaternion);
+      this.contactUp.set(0, 1, 0).applyQuaternion(car.quaternion);
+      const upright = Math.max(0, Math.min(1, this.contactUp.y));
+      blob.place(
+        car.position.x + dirX * gap * 0.8,
+        car.position.z + dirZ * gap * 0.8,
+        Math.atan2(-this.contactForward.z, this.contactForward.x),
+        gap,
+        128,
+        88,
+        0.85 * upright,
+      );
+    }
+  }
+  updateSubjectShadow(e, t, n, r, gap = 0) {
+    // An airborne subject casts its ground shadow far outside a frustum that
+    // only tracks the subject itself, which made ball and car shadows pop out
+    // mid-flight. Grow the ortho box with height and aim it at the midpoint
+    // between subject and ground projection; the extra spread softens like a
+    // real distance penumbra instead of snapping away.
+    const sun = this.referenceSunOffset ?? Wh,
+      projection = Math.max(0, n.y) / sun.y,
+      offset = Math.min(gap * 0.62, r * 4.2),
+      extent = r + offset,
+      s = (extent * 2) / bc,
+      focus = this.shadowFocus.copy(n).addScaledVector(sun, -projection * 0.5),
+      a = Math.round(focus.dot(Xh) / s) * s,
+      o = Math.round(focus.dot(Fp) / s) * s,
+      A = focus.dot(XA);
+    focus
       .copy(Xh)
       .multiplyScalar(a)
       .addScaledVector(Fp, o)
-      .addScaledVector(XA, A),
-      t.position.copy(this.shadowFocus),
-      e.position.copy(this.shadowFocus).add(this.referenceSunOffset ?? Wh),
+      .addScaledVector(XA, A);
+    ((t.position.copy(focus)),
+      (e.position.copy(focus).add(sun)),
+      (e.shadow.camera.left = -extent),
+      (e.shadow.camera.right = extent),
+      (e.shadow.camera.top = extent),
+      (e.shadow.camera.bottom = -extent),
+      e.shadow.camera.updateProjectionMatrix(),
       t.updateMatrixWorld());
   }
   updateBoostVisuals(e, t, n, r = 0, s = !0) {

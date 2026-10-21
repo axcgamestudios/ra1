@@ -40,6 +40,8 @@ class SettingsPanel {
     _(this, "inputSource", "keyboard");
     _(this, "asideMode", !1);
     _(this, "asidePinned", !1);
+    _(this, "controlViewTouched", !1);
+    _(this, "padHintsTimer", 0);
     _(this, "status", Yh.load());
     _(this, "onStatusChange", null);
     _(this, "onStatusDetails", null);
@@ -536,8 +538,8 @@ class SettingsPanel {
       this.overlay.querySelectorAll('[data-control-device]').forEach(button => {
         button.addEventListener('click', () => {
           this.cancelCapture();
-          this.overlay.querySelector('.parts-wrap').dataset.controlView = button.dataset.controlDevice;
-          this.overlay.querySelectorAll('[data-control-device]').forEach(item => item.setAttribute('aria-pressed', String(item === button)));
+          this.controlViewTouched = true;
+          this.setControlView(button.dataset.controlDevice);
         });
       }),
       this.overlay.querySelectorAll("[data-settings-tab]").forEach((c) => {
@@ -1174,8 +1176,34 @@ class SettingsPanel {
   setInputSource(e) {
     this.inputSource !== e &&
       ((this.inputSource = e),
-      document.body.classList.toggle("pad-nav", e === "pad"),
-      this.updatePadHints());
+      // Controller players care about the controller column first: flip the
+      // controls table to the controller view until they choose otherwise.
+      e === "pad" && this.autoControlView(),
+      this.schedulePadHints());
+  }
+  // Hiding the pad legend changes the sheet height, which shifts footer
+  // buttons mid-click: a mousedown lands on "Restore defaults", the legend
+  // hides during the press, the button slides up, and the mouseup misses it —
+  // the click never fires. Defer the visual swap until the click settles.
+  schedulePadHints() {
+    clearTimeout(this.padHintsTimer);
+    this.padHintsTimer = window.setTimeout(() => {
+      ((this.padHintsTimer = 0),
+        document.body.classList.toggle("pad-nav", this.inputSource === "pad"),
+        this.updatePadHints());
+    }, 260);
+  }
+  setControlView(view) {
+    const wrap = this.overlay.querySelector('.parts-wrap');
+    if (!wrap || wrap.dataset.controlView === view) return;
+    (wrap.dataset.controlView = view,
+      this.overlay.querySelectorAll('[data-control-device]').forEach(item => item.setAttribute('aria-pressed', String(item.dataset.controlDevice === view))));
+  }
+  autoControlView() {
+    !this.controlViewTouched &&
+      this.openState &&
+      this.activeTab === "controls" &&
+      this.setControlView("controller");
   }
   markPadNav() {
     this.setInputSource("pad");
@@ -1337,7 +1365,7 @@ class SettingsPanel {
       }),
       (t = this.overlay.querySelector(".sheet-body")) == null ||
         t.scrollTo({ top: 0 }),
-      e === "controls" && this.refreshPadStatus());
+      e === "controls" && (this.refreshPadStatus(), this.autoControlView()));
   }
   trapFocus(e) {
     if (e.key !== "Tab" || this.capture) return;
