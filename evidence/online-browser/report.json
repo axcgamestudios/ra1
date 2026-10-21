@@ -1,0 +1,20 @@
+{
+  "checks": [],
+  "errors": [],
+  "measurements": [],
+  "node": "v24.21.0",
+  "platform": "linux",
+  "cpu": "Intel(R) Xeon(R) Processor",
+  "browser": "143.0.7499.4",
+  "renderer": "Chromium headless SwiftShader on GitHub-hosted Linux; not a Chromebook benchmark",
+  "testGraphics": {
+    "qualityPreset": "potato",
+    "renderScale": 0.25,
+    "showStadium": false,
+    "limitFps": true,
+    "maxFps": 60
+  },
+  "synthetic": true,
+  "humanInternetPlayVerified": false,
+  "liveOAuthVerified": false
+}

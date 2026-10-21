@@ -1,0 +1,34 @@
+{
+  "failure": "TimeoutError: locator.click: Timeout 25000ms exceeded.\nCall log:\n  - waiting for locator('[data-home=\"ranked\"]')\n",
+  "server": {
+    "ticks": 4308,
+    "stalls": 0,
+    "maxStepMs": 0.08107199999994918,
+    "sentBytes": 0,
+    "skippedSnapshots": 0,
+    "started": 1792544852545
+  },
+  "clients": [
+    {
+      "hidden": false,
+      "focused": true,
+      "online": {
+        "active": false,
+        "role": null,
+        "code": "",
+        "guestJoined": false,
+        "guestReady": false,
+        "hostPrepared": false,
+        "connected": false,
+        "snapshotRate": 0,
+        "prediction": null,
+        "tick": 0,
+        "rtt": null,
+        "result": null,
+        "inputSequence": 0,
+        "pendingInputs": 0,
+        "bufferedSnapshots": 0
+      }
+    }
+  ]
+}
