@@ -77,6 +77,29 @@ export function interpolateState(out, a, b, t, seconds) {
     }
     return out;
 }
+// Short-gap dead reckoning for a starved timeline: continue each body along its
+// last confirmed linear velocity. Position is the perceptually dominant cue and
+// shares the physics frame with the velocity, so no axis mapping is needed; the
+// orientation stays on the last confirmed quaternion (bounded to a few tens of
+// milliseconds, where spin differences are imperceptible). Demoed bodies are
+// mid-respawn and must not be projected.
+export function extrapolateState(out, b, seconds) {
+    out.set(b);
+    if (!(seconds > 0))
+        return out;
+    extrapolateBody(out, L.BALL, seconds);
+    for (let slot = 0; slot < b[L.NUM_CARS]; slot++) {
+        const at = L.CARS + slot * S;
+        if (b[at + C.DEMOED] === 1)
+            continue;
+        extrapolateBody(out, at, seconds);
+    }
+    return out;
+}
+function extrapolateBody(out, at, seconds) {
+    for (let i = 0; i < 3; i++)
+        out[at + i] += out[at + 12 + i] * seconds;
+}
 export class VisualCorrection {
     constructor(at) { this.at = at; this.position = [0, 0, 0]; this.rotation = [0, 0, 0, 1]; this.hardSnaps = 0; }
     reset() { this.position.fill(0); this.rotation = [0, 0, 0, 1]; }
@@ -97,8 +120,12 @@ export class VisualCorrection {
         this.rotation = multiply(multiply(this.rotation, quaternion(before, at)), conjugate(quaternion(after, at)));
     }
     apply(out, dt) {
-        // Time-based decay, not "multiply by .9 per rendered frame".
-        const magnitude = Math.hypot(...this.position), halfLife = magnitude > 100 ? .025 : .055;
+        // Time-based decay, not "multiply by .9 per rendered frame". The
+        // half-life grows with the error magnitude: small jitter corrections
+        // still converge within a couple of frames, while a large post-outage
+        // offset spreads its correction over up to ~half a second instead of
+        // producing per-frame jumps that read as teleporting.
+        const magnitude = Math.hypot(...this.position), halfLife = clamp(.06 + magnitude / 10000, .03, .25);
         const decay = Math.pow(.5, Math.min(.1, Math.max(0, dt)) / halfLife);
         this.position = this.position.map(v => Math.abs(v) < .001 ? 0 : v * decay);
         this.rotation = slerp([0, 0, 0, 1], this.rotation, decay);

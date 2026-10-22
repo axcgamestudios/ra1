@@ -22,13 +22,18 @@ export async function scenario(Predictor, { name = 'drive', fps = 60, rtt = 80, 
     const remoteStreams = Array.from({ length: roster.length - 1 }, () => streamFactory?.());
     let nextRemote = 0, remoteSeq = 0, nextMaintenance = maintenanceHz ? 0 : Infinity;
     const observations = { maxHeight: 0, ballContacts: 0, worldContacts: 0, flips: 0, ballSpeed: 0 };
-    let now = 0, nextFrame = 0, nextTick = 1000 / SIM_HZ, tick = 0, seq = 0, controls = [...NEUTRAL], lastInput = -Infinity, upLast = 0, downLast = 0, lastFrame = null, lastVisual = null, lastVelocity = null, queuedMax = 0, replayMax = 0, steps = 0, inputs = 0;
+    let now = 0, nextFrame = 0, nextTick = 1000 / SIM_HZ, tick = 0, seq = 0, controls = [...NEUTRAL], lastInput = -Infinity, upLast = 0, downLast = 0, lastFrame = null, lastVisual = null, lastVelocity = null, queuedMax = 0, replayMax = 0, steps = 0, inputs = 0, upBurst = 0, downBurst = 0;
     function delivery(last) { return Math.max(last, now + rtt / 2 + (random() * 2 - 1) * jitter); }
+    // Packets trapped by a stall are retransmissions: SCTP staggers them over
+    // several RTTs rather than dumping the whole backlog in one instant. The
+    // spread models that recovery window so the server's flood guard never sees
+    // a legitimate burst as abuse.
+    const upSpread = 4, downSpread = 4;
     function send(sequence, values, metadata) { const packet = typeof sequence === 'object' ? sequence : { seq: sequence, controls: [...values], ...metadata }; upLast = delivery(upLast); if (stall && now >= 4000 && now < 4000 + stallDuration)
-        upLast = Math.max(upLast, 4000 + stallDuration + rtt / 2); up.push({ at: upLast, packet }); inputs++; return true; }
+        upLast = Math.max(upLast, 4000 + stallDuration + rtt / 2 + upBurst++ * upSpread); up.push({ at: upLast, packet }); inputs++; return true; }
     function snapshot() { if (random() < downLoss)
         return; downLast = delivery(downLast); if (stall && now >= 4000 && now < 4000 + stallDuration)
-        downLast = Math.max(downLast, 4000 + stallDuration + rtt / 2); let meta = stream?.metadata?.(); const snap = decodeSnapshot(encodeSnapshot({ tick, epoch: 1, time: now, state: server.state, checkpoint:checkpoints ? server.checkpoint : undefined, match, acknowledgements: Array(roster.length).fill(0).map((_, i) => i === 0 ? (meta?.seq ?? seq) : 0), inputStates: meta ? [meta, ...remoteStreams.map(s => s.metadata())] : undefined })); down.push({ at: downLast, snap }); }
+        downLast = Math.max(downLast, 4000 + stallDuration + rtt / 2 + downBurst++ * downSpread); let meta = stream?.metadata?.(); const snap = decodeSnapshot(encodeSnapshot({ tick, epoch: 1, time: now, state: server.state, checkpoint:checkpoints ? server.checkpoint : undefined, match, acknowledgements: Array(roster.length).fill(0).map((_, i) => i === 0 ? (meta?.seq ?? seq) : 0), inputStates: meta ? [meta, ...remoteStreams.map(s => s.metadata())] : undefined })); down.push({ at: downLast, snap }); }
     snapshot();
     const getControls = input ?? drive;
     try {

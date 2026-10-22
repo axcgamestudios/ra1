@@ -285,6 +285,10 @@ export function mountP2P(root, hooks) {
       room = new HostRoom({
         sim: hooks.sim, match: hooks.match, players: roster,
         send: payload => sendPayload(conn, payload),
+        // Backpressure probe: the SCTP send queue growing means the link (or a
+        // TURN relay) cannot carry 60 Hz snapshots; valve them instead of piling
+        // up seconds of latency. ~8 KB is roughly a dozen queued snapshots.
+        congested: () => (conn?.dataChannel?.bufferedAmount ?? 0) > 8192,
         onEvent: event => {
           if (event.type === 'kickoff') hooks.kickoff?.();
           else if (event.type === 'ended') onMatchEnded(event);
@@ -649,8 +653,11 @@ export function mountP2P(root, hooks) {
             const message = { type: 'input', seq, epoch: metadata.epoch, controls: values };
             sendPayload(conn, message);
             // Loss immunity: a second copy rides a separate SCTP message a few
-            // ms later; the host drops duplicates by sequence number.
-            setTimeout(() => sendPayload(conn, message), 8);
+            // ms later; the host drops duplicates by sequence number. Skipped
+            // when the send queue is backed up — a duplicate is pure overhead.
+            setTimeout(() => {
+              if ((conn?.dataChannel?.bufferedAmount ?? 0) < 32768) sendPayload(conn, message);
+            }, 8);
           },
           clock, usable, { render });
         hooks.match.state.paused = false;
@@ -659,7 +666,7 @@ export function mountP2P(root, hooks) {
           hud.querySelector('.online-network').textContent = conn?.open
             ? stats.predictionPaused && latestSnapshot?.match.phase === 'playing'
               ? 'Waiting for host updates · prediction paused'
-              : `P2P guest · ${rtt === null ? 'connected' : `${rtt} ms round trip`} · jitter ${Math.round(stats.jitterMs)} ms${stats.frameTiming.p95Ms > 50 ? ' · slow rendering' : ''}`
+              : `P2P guest · ${rtt === null ? 'connected' : `${rtt} ms round trip`} · jitter ${Math.round(stats.jitterMs)} ms · buffer ${Math.round(stats.interpolationMs)} ms${stats.frameTiming.p95Ms > 50 ? ' · slow rendering' : ''}`
             : 'Connection to the host lost';
           lastNetworkDisplay = now;
         }

@@ -32,7 +32,11 @@ export class InputStream {
         if (!validSequence(seq) || !validControls(controls) || seq > this.lastSequence + 2400)
             throw new Error('invalid_input');
         if (seq <= this.lastSequence) return false;
-        if (this.queue.length >= this.maxCommands) throw new Error('input_backlog');
+        // A burst after a transport stall legitimately fills the queue; drop the
+        // stale middle and keep the newest press/release edges instead of
+        // rejecting everything until the queue drains.
+        if (this.queue.length >= this.maxCommands)
+            this.queue.splice(0, this.queue.length - this.maxCommands + 1);
         this.lastSequence = seq;
         this.lastArrival = now;
         this.firstArrival ??= now;
@@ -84,12 +88,16 @@ export class InputStream {
 // players: [{ id, name, team, visual }] with slot 0 = host (local) and slot 1 = guest.
 // send(payload) dispatches either a JSON message or a binary snapshot to the guest.
 export class HostRoom {
-    constructor({ sim, match, players, send, onEvent }) {
+    constructor({ sim, match, players, send, onEvent, congested }) {
         this.sim = sim;
         this.match = match;
         this.players = players;
         this.send = send;
         this.onEvent = onEvent;
+        // Optional backpressure probe (SCTP bufferedAmount): when the link cannot
+        // carry the full snapshot stream, disposable snapshots are skipped so
+        // latency stops compounding; the next snapshot carries the full state.
+        this.congested = congested ?? (() => false);
         this.nativeCheckpoints = sim.module._physics_netStateVersion?.() === 1;
         this.active = false;
         this.terminal = false;
@@ -212,6 +220,11 @@ export class HostRoom {
         try {
             const values = this.snapshotValues();
             const withCheckpoint = this.nativeCheckpoints && (forceCheckpoint || this.snapshotCount % CHECKPOINT_EVERY === 0);
+            // Congestion valve: never queue a plain snapshot behind a backed-up
+            // send buffer — that only converts bandwidth shortage into delay.
+            // Checkpoint snapshots always pass: reconciliation after the gap
+            // needs one.
+            if (!withCheckpoint && this.congested()) { this.snapshotCount++; return; }
             this.snapshotCount++;
             const binary = encodeSnapshot(withCheckpoint ? { ...values, checkpoint: this.checkpoint() } : values);
             this.send(binary);

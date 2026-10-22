@@ -143,7 +143,11 @@ export class Prediction {
         const hidden = historical ? acknowledged?.hidden?.[meta.ticks - 1] : null;
         const hiddenAgrees = !snapshot.checkpoint || this.nativeCheckpoints && hiddenStateAgrees(hidden, snapshot.checkpoint, self)
           && historical && Math.abs(historical[L.CARS+C.BOOST]-state[L.CARS+C.BOOST]) < .1 && historical[L.CARS+C.IS_BOOSTING] === state[L.CARS+C.IS_BOOSTING];
-        const agrees = !reset && !resync && !lifecycleChanged && playing && !meta.idle && this.agrees(historical, state) && hiddenAgrees;
+        // `meta.idle` no longer forces a restore: the host holds the last command
+        // during a momentary queue starvation, so the predicted history usually
+        // still matches within tolerance. Restoring on every idle tick turned
+        // ordinary jitter into constant rubber-banding of the local car.
+        const agrees = !reset && !resync && !lifecycleChanged && playing && this.agrees(historical, state) && hiddenAgrees;
         this.seq = Math.max(this.seq, meta.seq);
         this.epoch = snapshot.epoch;
         if (reset || !playing) {
@@ -203,9 +207,10 @@ export class Prediction {
         const updateStarted = performance.now();
         this.reconcile();
         // Keep driving the local car through brief transport hiccups (packet
-        // retransmissions): 600 ms of prediction beats a frozen car. Beyond that
-        // the timeline is too stale to trust and the freeze path takes over.
-        const playing = connected && now - this.lastReceive < 600 && this.latest.match.phase === 'playing';
+        // retransmissions and congestion-valve pauses): 750 ms of prediction
+        // beats a frozen car. Beyond that the timeline is too stale to trust
+        // and the freeze path takes over.
+        const playing = connected && now - this.lastReceive < 750 && this.latest.match.phase === 'playing';
         if (playing) {
             this.accumulator += Math.min(elapsed, 100) * this.rate;
             const due = Math.floor(this.accumulator / DT + 1e-9), count = Math.min(12, due);
@@ -293,6 +298,6 @@ export class Prediction {
         this.averageQueue = 3;
         this.timeline.clear();
     }
-    metrics() { return { protocol: 2, nativeCheckpoint: +this.nativeCheckpoints, authoritativeLifecycleChanges: this.lifecycleChanges, checkpointRestores: this.checkpointRestores, hiddenHistoryBytes: this.nativeCheckpoints ? this.packetPool.length * 2 * CHECKPOINT_CAR * 4 : 0, frameTiming: this.frameTiming.summary(), predictionWork: this.updateTiming.summary(), historyBytes: this.packetPool.length * 2 * this.curr.byteLength, playbackRebases: this.timeline.rebases, playbackAgeMs: this.timeline.ageMs, resynchronizations: this.resynchronizations, predictionPaused: !this.wasPlaying, simulatedTicks: this.simulatedTicks, droppedTicks: this.droppedTicks, corrections: this.corrections, skippedRestores: this.skippedRestores, correctionUnits: this.error, visualOffsetUnits: Math.hypot(...this.localVisual.position), hardSnaps: this.localVisual.hardSnaps, jitterMs: this.timeline.jitterMs, interpolationMs: this.timeline.delayMs, interpolationUnderruns: this.timeline.underflows, inputQueueTicks: this.averageQueue, inputTimeScale: this.rate, maxReplayTicks: this.maxReplayTicks }; }
+    metrics() { return { protocol: 2, nativeCheckpoint: +this.nativeCheckpoints, authoritativeLifecycleChanges: this.lifecycleChanges, checkpointRestores: this.checkpointRestores, hiddenHistoryBytes: this.nativeCheckpoints ? this.packetPool.length * 2 * CHECKPOINT_CAR * 4 : 0, frameTiming: this.frameTiming.summary(), predictionWork: this.updateTiming.summary(), historyBytes: this.packetPool.length * 2 * this.curr.byteLength, playbackRebases: this.timeline.rebases, playbackAgeMs: this.timeline.ageMs, resynchronizations: this.resynchronizations, predictionPaused: !this.wasPlaying, simulatedTicks: this.simulatedTicks, droppedTicks: this.droppedTicks, corrections: this.corrections, skippedRestores: this.skippedRestores, correctionUnits: this.error, visualOffsetUnits: Math.hypot(...this.localVisual.position), hardSnaps: this.localVisual.hardSnaps, jitterMs: this.timeline.jitterMs, interpolationMs: this.timeline.delayMs, interpolationUnderruns: this.timeline.underflows, extrapolations: this.timeline.extrapolations, inputQueueTicks: this.averageQueue, inputTimeScale: this.rate, maxReplayTicks: this.maxReplayTicks }; }
     dispose() { this.sim.module._free(this.pointer); this.pending.length = 0; this.timeline.clear(); this.latest = this.queuedSnapshot = null; this.packetPool.length = 0; }
 }
