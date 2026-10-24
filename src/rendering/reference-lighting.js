@@ -4,21 +4,27 @@ import { bindReferenceScenery } from '../materials/reference-scenery.js';
 import { createReferenceFieldTexture } from '../materials/reference-field-texture.js';
 import { createReferenceSkyController } from '../materials/reference-sky.js';
 import { referenceGraphicsSettings, referencePaletteColors, referenceSunDirection, REFERENCE_GRAPHICS_DEFAULTS, resolveLightweightLook } from '../settings/reference-graphics.js';
+import { getStadium, stadiumGraphicsOverlay, stadiumUniformOverlay, subscribeStadium } from '../arena/stadium-themes.js';
 
 export class ReferenceLighting {
   constructor(settings = referenceGraphicsSettings.load()) {
     this.savedSettings = settings; this.settings = resolveLightweightLook(settings); this.dirty = true;
+    this.stadium = getStadium();
     this.uniforms = {
       referenceMakeup: { value: 1 }, referenceTint: { value: new F(1, 1, 1) },
       referenceHaze: { value: 0 }, referenceHorizon: { value: new F(.47, .75, .92) },
       referenceLook: { value: 0 },
     };
+    // Stadium switches re-tint the whole scenery on the next update pass.
+    this.unsubscribeStadium = subscribeStadium(() => { this.dirty = true; });
+    this.originalBackground = null;
   }
   setSettings(settings) { this.savedSettings = settings; this.settings = resolveLightweightLook(settings); this.dirty = true; }
   update(world, theme) {
-    if (!this.dirty && this.version === world.renderTreeVersion && this.theme === theme) return;
-    this.version = world.renderTreeVersion; this.theme = theme; this.dirty = false;
-    const settings = this.settings = resolveLightweightLook(this.savedSettings, theme), colors = referencePaletteColors(settings);
+    const stadium = getStadium();
+    if (!this.dirty && this.version === world.renderTreeVersion && this.theme === theme && this.stadium === stadium) return;
+    this.version = world.renderTreeVersion; this.theme = theme; this.stadium = stadium; this.dirty = false;
+    const settings = this.settings = stadiumGraphicsOverlay(stadium, resolveLightweightLook(this.savedSettings, theme)), colors = referencePaletteColors(settings);
     const makeup = theme === 'realistic' && settings.renderer === 'makeup';
     this.uniforms.referenceMakeup.value = Number(makeup);
     this.uniforms.referenceLook.value = Number(makeup && settings.lightweightLook);
@@ -36,15 +42,26 @@ export class ReferenceLighting {
     this.uniforms.referenceTint.value.fromArray(colors.sun.map((value, index) =>
       (1 + (value / base.sun[index] - 1) * .25) * (.76 + .24 * settings.lightPower / 3.5)));
     this.uniforms.referenceHorizon.value.fromArray(colors.horizon);
-    // Existing map already has its authored haze. The editor adjusts from that.
+    // Stadium look: tint/horizon/sun/background overrides on top of the palette.
+    const overlay = stadiumUniformOverlay(stadium);
+    if (overlay) {
+      this.uniforms.referenceTint.value.fromArray(overlay.tint);
+      this.uniforms.referenceHorizon.value.fromArray(overlay.horizon);
+    }
     this.uniforms.referenceHaze.value = settings.fog - REFERENCE_GRAPHICS_DEFAULTS.fog;
     world.referenceSunOffset ??= new F();
     world.referenceSunOffset.fromArray(referenceSunDirection(settings)).multiplyScalar(4950);
     for (const sun of [world.carSun, world.ballSun, world.opponentSun]) if (sun) {
-      sun.color.setRGB(...(makeup ? colors.sun : [1, .95, .86]));
+      sun.color.setRGB(...(overlay?.sun ?? (makeup ? colors.sun : [1, .95, .86])));
       sun.intensity = settings.lightPower / 3.5;
       sun.shadow.radius = settings.shadowBlur;
       sun.position.copy(sun.target.position).add(world.referenceSunOffset);
+    }
+    if (world.scene?.background?.isColor) {
+      this.originalBackground ??= world.scene.background.clone();
+      const target = overlay?.background ?? null;
+      const wanted = target === null ? this.originalBackground.getHex() : target;
+      if (world.scene.background.getHex() !== wanted) world.scene.background.setHex(wanted);
     }
     for (const root of [world.turf, world.sky, world.stadium]) root?.traverse(object => {
       for (const material of Array.isArray(object.material) ? object.material : [object.material])

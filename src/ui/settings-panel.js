@@ -2,7 +2,8 @@ import { _ } from "../core/class-fields.js";
 import { PC, Pf, RC, Rh, TC, Yo, getActionLabel, getBindingLabel, io, kC, saveBindings } from "../input/bindings.js";
 import { $C, Hd, Ks, OA } from "../input/controller-selection.js";
 
-import { Xd, getAudioSettings, lg, setMasterVolume } from "../audio/settings.js";
+import { Xd, getAudioSettings, lg, setAnnouncerEnabled, setMasterVolume } from "../audio/settings.js";
+import { STADIUMS, getStadium, setStadium } from "../arena/stadium-themes.js";
 import { Ps } from "../rendering/camera.js";
 import { Vt } from "./icons.js";
 import { TouchLayoutEditor } from "./touch-editor.js";
@@ -365,6 +366,15 @@ class SettingsPanel {
                 </header>
                 <div class="zone__rows">
                   ${Pr("showStadium", "Park Scenery", "Adds low stands and floodlight towers. All presets share the same trees, gardens and mountain backdrop.", "graphics")}
+                  <div class="dim">
+                    <label class="dim__label" for="graphics-stadium">Stadium</label>
+                    <span class="dim__leader" aria-hidden="true"></span>
+                    <span class="dim__control">
+                      <select id="graphics-stadium" class="pick" data-stadium-setting="stadium">
+                        ${STADIUMS.map(stadium => `<option value="${stadium.id}">${stadium.name} — ${stadium.blurb}</option>`).join("")}
+                      </select>
+                    </span>
+                  </div>
                 </div>
               </section>
             </section>
@@ -391,6 +401,13 @@ class SettingsPanel {
                     </span>
                     <output class="figure" data-audio-value-for="masterVolume"
                             for="audio-master-volume"></output>
+                  </div>
+                  <div class="dim">
+                    <label class="dim__label" for="audio-announcer">Stadium Announcer</label>
+                    <span class="dim__leader" aria-hidden="true"></span>
+                    <span class="dim__control">
+                      <input id="audio-announcer" type="checkbox" data-audio-setting="announcer" />
+                    </span>
                   </div>
                 </div>
               </section>
@@ -506,6 +523,12 @@ class SettingsPanel {
         c.addEventListener("change", () => {
           (this.setAside(!1, !1), this.updateTrainingSetting(c));
         });
+      }),
+      this.overlay.querySelectorAll("[data-stadium-setting]").forEach((c) => {
+        c.addEventListener("change", () => {
+          if (c.value === "park" || c.value === "neon" || c.value === "dusk") setStadium(c.value);
+        });
+        c.value = getStadium();
       }),
       this.overlay.querySelectorAll("[data-audio-setting]").forEach((c) => {
         const h = () => {
@@ -709,14 +732,21 @@ class SettingsPanel {
     a && (a.value = `${r.toFixed(n.decimals)}${n.suffix ?? ""}`);
   }
   updateAudioSetting(e) {
-    if (e.dataset.audioSetting !== "masterVolume") return;
-    const t = Number(e.value);
-    Number.isFinite(t) && (setMasterVolume(t / 100), this.updateAudioRangePresentation(e));
+    if (e.dataset.audioSetting === "masterVolume") {
+      const t = Number(e.value);
+      Number.isFinite(t) && (setMasterVolume(t / 100), this.updateAudioRangePresentation(e));
+      return;
+    }
+    if (e.dataset.audioSetting === "announcer" && e instanceof HTMLInputElement) {
+      setAnnouncerEnabled(e.checked);
+    }
   }
   syncAudioControls() {
     const e = Math.round(getAudioSettings().masterVolume * 100);
     this.overlay.querySelectorAll("[data-audio-setting]").forEach((t) => {
-      ((t.value = String(e)), this.updateAudioRangePresentation(t));
+      t.dataset.audioSetting === "masterVolume"
+        ? ((t.value = String(e)), this.updateAudioRangePresentation(t))
+        : t.dataset.audioSetting === "announcer" && (t.checked = getAudioSettings().announcer !== false);
     });
   }
   updateAudioRangePresentation(e) {

@@ -462,8 +462,11 @@ class GameWorld {
           this.carDemolitions[u].update(r, !1, this.cars[u].position, !1));
         continue;
       }
-      const v = u === 0 ? a : o,
-        g = u === 0 ? s : ((o == null ? void 0 : o.throttle) ?? 0),
+      // `o` is either the single rival's controls (duel) or a per-car array in
+      // local order for team matches (slot 0 is the local car and is skipped).
+      const perCar = Array.isArray(o) ? o[u - 1] : o,
+        v = u === 0 ? a : perCar,
+        g = u === 0 ? s : ((perCar == null ? void 0 : perCar.throttle) ?? 0),
         m = e[p + CAR_STATE.DEMOED] === 1 && t[p + CAR_STATE.DEMOED] !== 1;
       this.applyPhys(this.cars[u], m ? t : e, t, p, n);
       const y = t[p + CAR_STATE.DEMOED] !== 1;

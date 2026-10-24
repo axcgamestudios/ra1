@@ -1,4 +1,8 @@
 import { mountP2P } from '../online/p2p.js';
+import { MatchEvents } from '../match/match-events.js';
+import { createAnnouncer } from '../audio/announcer.js';
+import { createScoreboard, scoreboardData } from '../ui/scoreboard.js';
+import { applyStadiumAccents, getStadium, setStadium, subscribeStadium } from '../arena/stadium-themes.js';
 import { setCarMaterialQuality } from "../materials/car.js";
 import {FennecV2Post} from '../rendering/fennec-v2-post.js';
 import { ReferencePost } from '../rendering/reference-post.js';
@@ -483,7 +487,7 @@ async function startGame() {
       n.resetView(),
       s.sync());
   };
-  resetSession = () => { if (a.state.mode !== "match" && !goalPresentation?.active) _e(); };
+  resetSession = () => { if (a.state.mode !== "match" && !goalPresentation?.active) { _e(); matchEvents?.reset(offlineTeams); } };
   ((pe = new MatchMenu(an, {
     playerTeam: t.playerTeam,
     botId: o.id,
@@ -510,6 +514,7 @@ async function startGame() {
           n.setUnlimitedBoost(!1),
           (p = !1),
           a.start(),
+          matchEvents?.reset(offlineTeams),
           _e(),
           pe.update(a.state)));
     },
@@ -757,6 +762,7 @@ async function startGame() {
         if (!W && c > 0) c--;
         const fe = n.state;
         const scoredGoal = n.pollGoal();
+        handleOfflineEvents(scoredGoal, a.state.phase);
         if (scoredGoal) pendingGoal = { team: scoredGoal === 1 ? 0 : 1, mode: "match" };
         (a.tick({
           goal: scoredGoal,
@@ -839,14 +845,16 @@ async function startGame() {
       (a.state.paused =
         !online?.active && a.state.mode === "match" &&
         (ne || J.size > 0 || document.hidden || !document.hasFocus() || p)),
-      online?.active ? ((l = online.opponentControls ?? A), he(), online.update(W, ke, s)) : a.state.paused || (a.state.mode === "match" && a.state.phase === "ended") || (a.state.mode === "freeplay" && J.size > 0)
+      online?.active ? ((l = online.remoteControls ?? online.opponentControls ?? A), he(), online.update(W, ke, s)) : a.state.paused || (a.state.mode === "match" && a.state.phase === "ended") || (a.state.mode === "freeplay" && J.size > 0)
         ? (he(), s.sync(W))
         : s.update(W, he, a.state.mode === "match" ? me : void 0),
       a.state.mode === "freeplay" &&
         (() => { const goal = n.pollGoal();
+          handleOfflineEvents(goal, a.state.phase);
           if (goal && !V.disableGoalReset) pendingGoal = { team: goal === 1 ? 0 : 1, mode: "freeplay" };
         })(),
       pe.update(a.state),
+      watchMatchPhase(),
       an.dataset.gameMode !== a.state.mode &&
         ((an.dataset.gameMode = a.state.mode),
         D.setMatchActive(a.state.mode === "match")),
@@ -930,7 +938,7 @@ async function startGame() {
     }
     for (let bn = 0; bn < E.length; bn++) {
       const B = STATE_LAYOUT.CARS + bn * CAR_STATE_STRIDE,
-        pi = bn === r ? ke : l,
+        pi = bn === r ? ke : (Array.isArray(l) ? l[bn - 1] ?? A : l),
         In = bn < Mt[STATE_LAYOUT.NUM_CARS],
         Ys =
           Mt[B + CAR_STATE.VEL] * Mt[B + CAR_STATE.FWD] +
@@ -984,8 +992,90 @@ async function startGame() {
     SphereGeometry:Ur,DoubleSide:Ut,AdditiveBlending:li }, N.scene, te);
   arenaEffects = createArenaEffects({ BufferGeometry: Ct, Float32BufferAttribute: Ke,
     MeshBasicMaterial: cn, InstancedMesh: Lm, Object3D: It, Color: Ne,
-    Mesh: Ee, RingGeometry: Ya, DoubleSide: Ut }, N.scene, {
+    Mesh: Ee, RingGeometry: Ya, DoubleSide: Ut, SphereGeometry: Ur, AdditiveBlending: li, Vector3: F }, N.scene, {
     lightweight: initialGraphics.qualityPreset === "potato", audioContext: getAudioContext, audioOutput: getAudioInput,
+  });
+  // -------------------------------------------------- announcer + scoreboard ----
+  const announcer = createAnnouncer(an);
+  const scoreboard = createScoreboard(an);
+  const offlineTeams = [t.playerTeam, t.botTeam];
+  const offlineRoster = () => [{ name: "YOU", team: t.playerTeam }, { name: JA(o.id).name, team: t.botTeam }];
+  const matchEvents = new MatchEvents(offlineTeams);
+  let lastMatchPhase = a.state.phase, tabHeld = false;
+  const scoreboardClock = () => {
+    const secs = Math.max(0, Math.ceil(a.state.overtime ? a.state.overtimeSeconds : a.state.remainingSeconds));
+    return `${a.state.overtime ? "+" : ""}${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, "0")}`;
+  };
+  const scoreboardView = (stats, roster, teams) => scoreboardData(stats, roster, teams, {
+    selfSlot: 0, blueScore: a.state.blueScore, orangeScore: a.state.orangeScore, clockText: scoreboardClock(),
+  });
+  function refreshScoreboard() {
+    if (online?.active) {
+      const stats = online.stats();
+      if (!stats) return;
+      scoreboard.show({ ...scoreboardView(stats, online.localRoster(), online.teams()) });
+    } else if (a.state.mode === "match" || a.state.mode === "freeplay") {
+      scoreboard.show({ ...scoreboardView(matchEvents.summary(), offlineRoster(), offlineTeams) });
+    }
+  }
+  // One entry point for every authority (offline sim or P2P host/guest feed):
+  // announcer voice + banner, goal explosion online and the stats scoreboard.
+  function handleMatchEvents(events, stats, teams, roster) {
+    for (const event of events ?? []) {
+      if (event.kind === "goal") {
+        announcer.say("goal", { team: event.team });
+        // Online has no goal presentation; fire the (bigger) local explosion.
+        if (online?.active) arenaEffects.goal(N.ball.position.clone(), event.team === 0 ? 0x55baff : 0xffab47);
+        scoreboard.show({ ...scoreboardView(stats, roster, teams), transient: 3800 });
+      } else if (event.kind === "nice_shot") {
+        setTimeout(() => announcer.say("nice-shot", { team: event.team }), 550);
+      } else if (event.kind === "great_pass") {
+        setTimeout(() => announcer.say("great-pass", { team: event.team }), 1050);
+      } else if (event.kind === "what_a_play") {
+        setTimeout(() => announcer.say("what-a-play", { team: event.team }), 1600);
+      } else if (event.kind === "save") {
+        announcer.say("what-a-save", { team: event.team });
+      } else if (event.kind === "epic_save") {
+        announcer.say("epic-save", { team: event.team });
+      }
+    }
+  }
+  const handleOfflineEvents = (goal, phase) => {
+    const events = matchEvents.update(n.state, goal, phase);
+    if (events.length) handleMatchEvents(events, matchEvents.summary(), offlineTeams, offlineRoster());
+  };
+  // Full time: victory/defeat call plus the final scoreboard.
+  function watchMatchPhase() {
+    if (a.state.phase === lastMatchPhase) return;
+    const ended = a.state.phase === "ended" && lastMatchPhase !== "ended";
+    lastMatchPhase = a.state.phase;
+    if (!ended || a.state.mode !== "match") return;
+    const ownTeam = online?.active ? online.ownTeam ?? 0 : t.playerTeam;
+    if (a.state.winner === 0 || a.state.winner === 1)
+      announcer.say(a.state.winner === ownTeam ? "victory" : "defeat");
+    refreshScoreboard();
+  }
+  // Hold TAB to peek at the scoreboard, Rocket League style.
+  window.addEventListener("keydown", event => {
+    if (event.code !== "Tab" || event.repeat) return;
+    if (online?.visible || home?.visible || Xe.isOpen || de?.isOpen || pe.isOpen || goalPresentation?.active) return;
+    if (!(online?.active || a.state.mode === "match" || a.state.mode === "freeplay") || J.size > 0 || ne) return;
+    event.preventDefault();
+    tabHeld = true;
+    refreshScoreboard();
+  }, true);
+  window.addEventListener("keyup", event => {
+    if (event.code !== "Tab") return;
+    tabHeld = false;
+    scoreboard.hide();
+  }, true);
+  // Stadium accents (Neon Night / Golden Dusk rails and rings) apply live.
+  applyStadiumAccents(N.scene, getStadium(), N);
+  subscribeStadium(id => {
+    applyStadiumAccents(N.scene, id, N);
+    referenceLighting.dirty = true;
+    te.shadowMap.needsUpdate = true;
+    previewDirty = true;
   });
   const parkedState = s.currState.slice();
   const replayState = new Float32Array(s.currState.length);
@@ -1151,6 +1241,8 @@ async function startGame() {
     resume: () => st(), home: () => home.show(), closeHome: () => home.close(),
     bots: () => { ne = true; pe.show(); },
     kickoff: () => { _e(); },
+    onEvents: (events, stats, teams) => handleMatchEvents(events, stats, teams, online?.localRoster()),
+    onStats: () => { if (tabHeld) refreshScoreboard(); },
     prepare: async (roster, order, valid, descriptor) => {
       goalPresentation?.finish({ cancel: true }); v(); p = false;
       const ordered = order.map(index => roster[index]);
@@ -1168,6 +1260,23 @@ async function startGame() {
   });
   if (new URLSearchParams(location.search).get("physicsDebug") === "1") {
     Object.defineProperty(window, "rocketArenaOnline", { value: Object.freeze({ snapshot: () => online.diagnostics() }) });
+    // Presentation debug hooks: announcer, scoreboard, stadiums, goal effects.
+    Object.defineProperty(window, "rocketArenaPresentation", { value: Object.freeze({
+      say: kind => announcer.say(kind),
+      testGoal: (team = 0) => {
+        matchEvents.slots[0].goals++;
+        matchEvents.slots[0].points += 100;
+        handleMatchEvents([{ kind: "goal", slot: 0, team, ownGoal: false }], matchEvents.summary(), offlineTeams, offlineRoster());
+        // A debug goal simulates the full presentation, explosion included.
+        arenaEffects.goal(N.ball.position.clone(), team === 0 ? 0x55baff : 0xffab47);
+      },
+      testSave: (epic = false) => handleMatchEvents([{ kind: epic ? "epic_save" : "save", slot: 0, team: 0 }], matchEvents.summary(), offlineTeams, offlineRoster()),
+      scoreboardVisible: () => scoreboard.visible,
+      scoreboardRows: () => document.querySelectorAll(".arena-scoreboard__player").length,
+      stats: () => matchEvents.summary(),
+      effectsActive: () => arenaEffects.active,
+      stadium: { set: setStadium, get: getStadium, accents: () => N.stadiumAccents?.children.length ?? 0 },
+    }) });
   }
   home.show();
   void online.restoreIntent();

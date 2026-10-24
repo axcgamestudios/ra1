@@ -1,15 +1,16 @@
-import { createSettingsStore, readNumber } from "../core/settings-store.js";
+import { createSettingsStore, readBoolean, readNumber } from "../core/settings-store.js";
 import { AudioMixer } from "./context.js";
 
 const f1 = "rocket-arena.audio-settings.v1";
 
-const lg = { masterVolume: 0.6 };
+const lg = { masterVolume: 0.6, announcer: true };
 
 const bA = createSettingsStore(
     f1,
     () => ({ ...lg }),
     (i, e) => {
       i.masterVolume = readNumber(e.masterVolume, i.masterVolume, { min: 0, max: 1 });
+      i.announcer = readBoolean(e.announcer, i.announcer);
     },
   );
 
@@ -74,4 +75,10 @@ function setMasterVolume(i) {
     window.dispatchEvent(new Event(Xd)));
 }
 
-export { Xd, getAudioContext, getAudioInput, getAudioSettings, lg, setMasterVolume };
+function setAnnouncerEnabled(i) {
+  En.settings.announcer = !!i;
+  bA.save(En.settings);
+  window.dispatchEvent(new Event(Xd));
+}
+
+export { Xd, getAudioContext, getAudioInput, getAudioSettings, lg, setAnnouncerEnabled, setMasterVolume };
