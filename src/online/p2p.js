@@ -272,9 +272,16 @@ export function mountP2P(root, hooks) {
     }
   }
 
-  async function open() {
+  async function open(focus = '') {
     lastResult = null; find('.online-results').hidden = true;
-    show(); setStatus('Create a room and share the code, or join a friend\'s room.'); controls();
+    show();
+    setStatus(focus === 'host' ? 'Create a room and share the five-letter code with your friends.'
+      : focus === 'join' ? 'Enter the five-letter room code shared by the host.'
+      : 'Create a room and share the code, or join a friend\'s room.');
+    controls();
+    // Host/Join quick-entry from the home play menu: land focus on the action.
+    if (focus === 'host') find('[data-p2p="create"]').focus?.();
+    else if (focus === 'join') { codeInput.focus?.(); codeInput.select?.(); }
   }
 
   function teardownSignaling() {
@@ -748,6 +755,9 @@ export function mountP2P(root, hooks) {
 
   function showResult(result) {
     lastResult = result;
+    // Local progression (player level on the home card) counts finished
+    // matches, including online ones, but not cancelled sessions.
+    if (result.status !== 'cancelled') { try { hooks.onMatchEnd?.(); } catch {} }
     const own = role === 'host' ? 0 : selfSlot;
     const ownTeam = roster?.[own]?.team ?? (role === 'host' ? 0 : 1);
     const stats = role === 'guest' && result.stats ? remapStats(result.stats) : (result.stats ?? (role === 'host' ? matchEvents?.summary() ?? null : null));

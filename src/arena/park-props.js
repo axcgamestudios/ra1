@@ -1,11 +1,12 @@
 // MakeUp-derived daylight adaptation: LGPL-3.0; see docs/exterior-art.md.
 import { createDistantPropBatch, propGeometryKey } from './distant-props.js';
 import { parkLandHeight } from './park-landscape.js';
+import { fetchWithRetry } from '../core/net-retry.js';
 
 // Supplied assets, batched by geometry/material and by spatial sector. No
 // per-frame object creation, wind deformation, or independent texture copies.
 export async function loadParkProps(T, load, loadDistantIndices = async () => {
-  const response = await fetch('/assets/park-props/distant-indices.json');
+  const response = await fetchWithRetry('/assets/park-props/distant-indices.json', {}, { attempts: 3, label: 'distant scenery index' });
   if (!response.ok) throw new Error('Distant scenery geometry could not load');
   return (await response.json()).indices;
 }) {

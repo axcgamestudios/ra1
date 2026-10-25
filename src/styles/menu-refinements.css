@@ -1,9 +1,4 @@
 /* Keep the existing navy / cyan arcade language, with clearer menu hierarchy. */
-#app .arena-play__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); left: 16%; right: 16%; top: 28%; gap: 24px; }
-#app .arena-mode { aspect-ratio: 16 / 10; }
-#app .arena-mode strong { font-size: clamp(20px, 2.2vw, 32px); font-weight: 800; font-style: italic; }
-#app .arena-mode small { font-size: clamp(12px, 1vw, 16px); line-height: 1.4; }
-#app .arena-mode > span { padding: 48px 22px 20px; }
 #app .sheet-tabs { overflow-x: auto; flex-wrap: nowrap; scrollbar-width: thin; }
 #app .sheet-tab { flex: 1 0 auto; }
 #app .panel-lede { line-height: 1.65; max-width: 72ch; color: #c4e3f0; }

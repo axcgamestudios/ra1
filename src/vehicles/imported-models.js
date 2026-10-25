@@ -6,6 +6,7 @@ import { Ao, BA, Ee, F, Gt, Ht, Lt, Ne, Ut, cn, dt, fr, li, xr } from "../vendor
 import { ho } from "../vendor/gltf-loader.js";
 import { Nr } from "../rendering/theme-materials.js";
 import { Vb, Yb, np } from "./rocket-hatch.js";
+import { withRetry } from "../core/net-retry.js";
 
 let rA = null;
 let fennecV2Lighting;
@@ -26,13 +27,21 @@ function getDaylightReflection() {
   if (!daylightReflectionTexture) {
     let loaded, failed;
     daylightReflectionReady = new Promise((resolve, reject) => { loaded = resolve; failed = reject; });
-    daylightReflectionTexture = new Ao().load(CAR_ENVIRONMENT_URL, loaded, undefined, failed);
-    daylightReflectionTexture.colorSpace = Ht;
-    daylightReflectionTexture.wrapS = BA;
-    daylightReflectionTexture.wrapT = fr;
-    daylightReflectionTexture.anisotropy = 1;
-    const pearlReady = new Promise((resolve, reject) => {
-      const texture = new Ao().load(PEARL_LIGHTING_URL, resolve, undefined, reject);
+    // Retried loads: a dropped request on a flaky link must not poison the
+    // shared reflection (every imported body and the arena bank await it).
+    withRetry(() => new Promise((resolve, reject) => {
+      new Ao().load(CAR_ENVIRONMENT_URL, resolve, undefined, reject);
+    }), { attempts: 3, label: 'car environment reflection' }).then(loaded, failed);
+    const texture = daylightReflectionTexture = new Ao().load(CAR_ENVIRONMENT_URL);
+    texture.colorSpace = Ht;
+    texture.wrapS = BA;
+    texture.wrapT = fr;
+    texture.anisotropy = 1;
+    const pearlReady = withRetry(() => new Promise((resolve, reject) => {
+      new Ao().load(PEARL_LIGHTING_URL, resolve, undefined, reject);
+    }), { attempts: 3, label: 'pearl lighting' });
+    pearlReady.then(() => {
+      const texture = new Ao().load(PEARL_LIGHTING_URL);
       texture.colorSpace = '';
       texture.flipY = false;
       texture.generateMipmaps = false;
@@ -57,7 +66,9 @@ const sketchfabModels = createSketchfabModels({
     // listed before) removes a load-order race that produced reflections-free,
     // near-black bodies on Amethyst and Octane Original after a garage change.
     if (!url.includes('/ball/')) fennecV2Lighting = await loadFennecV2Lighting();
-    return new ho().loadAsync(url);
+    // Retried GLB fetch: mobile links drop large binaries routinely, and one
+    // failure used to leave the car model permanently unloaded.
+    return withRetry(() => new ho().loadAsync(url), { attempts: 3, label: `car model ${url.split('/').at(-2)}` });
   },
 });
 
@@ -66,13 +77,18 @@ const isSketchfabCar = id => ['fennec', 'octane-original', 'challenger', 'spectr
 function Uh() {
   return (
     rA ||
-    ((rA = new ho().loadAsync("/assets/game-car/model.gltf").then((i) => {
+    ((rA = withRetry(() => new ho().loadAsync("/assets/game-car/model.gltf"), { attempts: 3, label: 'game car model' })
+      .then((i) => {
       i.scene.updateMatrixWorld(!0);
       const e = np(i.scene, "game-car-body"),
         t = Vb.map((r) => np(i.scene, r)),
         n = Yb(e, t);
       refineRocketHatch(e);
       return { body: e, wheels: t, wheelHardware: n };
+    })
+    .catch((i) => {
+      // Reset the cache so a later garage swap can retry the download.
+      throw ((rA = null), i);
     })),
     rA)
   );

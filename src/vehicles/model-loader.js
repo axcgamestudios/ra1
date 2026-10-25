@@ -1,5 +1,6 @@
 import { Ee } from "../vendor/three.js";
 import { ho } from "../vendor/gltf-loader.js";
+import { withRetry } from "../core/net-retry.js";
 
 const ag = [
   "frame-details",
@@ -14,8 +15,7 @@ let ma = null;
 function og() {
   return (
     ma ||
-    ((ma = new ho()
-      .loadAsync("/assets/realistic-car/details.glb")
+    ((ma = withRetry(() => new ho().loadAsync("/assets/realistic-car/details.glb"), { attempts: 3, label: 'realistic car details' })
       .then(({ scene: i }) => {
         const e = {};
         for (const t of ag) {

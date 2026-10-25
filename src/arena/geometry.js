@@ -11,6 +11,13 @@ import { Ao, Ct, Ee, F, Gi, Hm, Hs, Ht, Ke, Lt, Ne, Nm, Qt, Tn, Ur, Ut, Wa, Xt, 
 import { hb, hl } from "../vendor/buffer-geometry-utils.js";
 import { Ji, Vi, vn } from "../rendering/theme-materials.js";
 import { daylightMaterialTypes, daylightReflectionReady, getDaylightReflection } from "../vehicles/imported-models.js";
+import { withRetry, fetchWithRetry } from "../core/net-retry.js";
+
+// Every arena texture/prop download retries: flaky mobile links drop large
+// binary requests routinely, and one dropped request used to abort the whole
+// boot with a generic "Failed to start" screen.
+const loadTextureWithRetry = url => withRetry(() => new Ao().loadAsync(url), { attempts: 3, label: 'arena texture' });
+const loadGLTFWithRetry = url => withRetry(() => new GLTFLoader().loadAsync(url), { attempts: 3, label: 'arena prop' });
 
 const SS = 120.507;
 
@@ -176,18 +183,17 @@ function GS() {
 }
 
 async function loadParkArt(turf) {
-  const loader = new Ao();
   const exteriorReady = Promise.all([
-    loader.loadAsync(PARK_ART.city), loader.loadAsync(PARK_ART.landShade),
-    loader.loadAsync(PARK_ART.landscapeDetail), loader.loadAsync(PARK_ART.landscapeReflection),
-    loader.loadAsync(PARK_ART.frozenWater),
-    loadParkProps(parkTypes, url => new GLTFLoader().loadAsync(url)),
+    loadTextureWithRetry(PARK_ART.city), loadTextureWithRetry(PARK_ART.landShade),
+    loadTextureWithRetry(PARK_ART.landscapeDetail), loadTextureWithRetry(PARK_ART.landscapeReflection),
+    loadTextureWithRetry(PARK_ART.frozenWater),
+    loadParkProps(parkTypes, loadGLTFWithRetry),
   ]);
   const [panorama, grass, trees, horizon, detail, flags, groundAO, exterior] = await Promise.all([
-    loader.loadAsync(PARK_ART.panorama), loader.loadAsync(PARK_ART.pitch),
-    loader.loadAsync(PARK_ART.trees), loader.loadAsync(PARK_ART.horizon), loader.loadAsync(PARK_ART.detail),
-    loader.loadAsync(PARK_ART.flags),
-    loader.loadAsync('/assets/sketchfab/fennec-v2/ground-ao.webp'),
+    loadTextureWithRetry(PARK_ART.panorama), loadTextureWithRetry(PARK_ART.pitch),
+    loadTextureWithRetry(PARK_ART.trees), loadTextureWithRetry(PARK_ART.horizon), loadTextureWithRetry(PARK_ART.detail),
+    loadTextureWithRetry(PARK_ART.flags),
+    loadTextureWithRetry('/assets/sketchfab/fennec-v2/ground-ao.webp'),
     exteriorReady,
   ]);
   for (const item of hg.get(turf) ?? []) {
@@ -310,10 +316,9 @@ function $S(i) {
 }
 
 async function zS() {
-  const loader = new Ao();
   getDaylightReflection();
   const [albedo, reflection] = await Promise.all([
-    loader.loadAsync(PARK_ART.bank), daylightReflectionReady,
+    loadTextureWithRetry(PARK_ART.bank), daylightReflectionReady,
   ]);
   return createParkBankMaterial(parkTypes, albedo, reflection);
 }
@@ -413,7 +418,7 @@ function Pp(root, side) {
 }
 async function WS() {
   const [i, e] = await Promise.all([
-    fetch(`${WA}/continuous-boundary.json.gz`),
+    fetchWithRetry(`${WA}/continuous-boundary.json.gz`, {}, { attempts: 3, label: 'stadium boundary' }),
     zS(),
   ]);
   if (!i.ok)

@@ -21,6 +21,7 @@ import { createArenaEffects } from "../effects/arena-effects.js";
 import { setParkBankQuality } from "../arena/park.js";
 import { mountPauseMenu } from "../ui/pause-menu.js";
 import { mountHome } from "../ui/home-screen.js";
+import { recordFinishedMatch, teamWins } from "../core/player-progress.js";
 import { PhysicsClock } from "../physics/clock.js";
 import { createPhysicsDebug } from "../diagnostics/physics-debug.js";
 import { physicsModeURL, resolvePhysicsSelection } from "../physics/presets.js";
@@ -1013,6 +1014,8 @@ async function startGame() {
   };
   const scoreboardView = (stats, roster, teams) => scoreboardData(stats, roster, teams, {
     selfSlot: 0, blueScore: a.state.blueScore, orangeScore: a.state.orangeScore, clockText: scoreboardClock(),
+    overtime: !!a.state.overtime, mode: online?.active ? `CASUAL · ${String(online.mode).toUpperCase()}` : "CASUAL",
+    wins: teamWins(),
   });
   function refreshScoreboard() {
     if (online?.active) {
@@ -1067,6 +1070,9 @@ async function startGame() {
     const ended = a.state.phase === "ended" && lastMatchPhase !== "ended";
     lastMatchPhase = a.state.phase;
     if (!ended || a.state.mode !== "match") return;
+    // Finished matches feed the local player level and the scoreboard WINS
+    // rails shown on the home card and the TAB board.
+    if (!online?.active) recordFinishedMatch({ winnerTeam: a.state.winner });
     const ownTeam = online?.active ? online.ownTeam ?? 0 : t.playerTeam;
     if (a.state.winner === 0 || a.state.winner === 1)
       announcer.say(a.state.winner === ownTeam ? "victory" : "defeat");
@@ -1246,6 +1252,9 @@ async function startGame() {
       qe("home", open);
     },
     casual: () => { pe.options.onLeave(); void online.open(); },
+    // Play-list quick entries land focus on the matching action in the dialog.
+    host: () => { pe.options.onLeave(); void online.open('host'); },
+    join: () => { pe.options.onLeave(); void online.open('join'); },
     match: () => { returnHomeAfter = "match"; ne = true; pe.show(); },
     freeplay: () => { pe.options.onLeave(); st(); },
     garage: () => { returnHomeAfter = "car"; ne = true; de.show(); },
@@ -1276,6 +1285,7 @@ async function startGame() {
     kickoff: () => { _e(); },
     onEvents: (events, stats, teams) => handleMatchEvents(events, stats, teams, online?.localRoster()),
     onStats: () => { if (tabHeld) refreshScoreboard(); },
+    onMatchEnd: result => recordFinishedMatch({ winnerTeam: result?.winner ?? null }),
     prepare: async (roster, order, valid, descriptor) => {
       victory.hide();
       goalPresentation?.finish({ cancel: true }); v(); p = false;

@@ -2,6 +2,7 @@ import { PEARL_COLORS } from "../materials/pearl.js";
 import { F, dt } from "../vendor/three.js";
 import { ho } from "../vendor/gltf-loader.js";
 import { $0 } from "./mesh-utils.js";
+import { withRetry } from "../core/net-retry.js";
 
 const $d = PEARL_COLORS.blue;
 
@@ -35,8 +36,7 @@ let pa = null;
 function Y0() {
   return (
     pa ||
-    ((pa = new ho()
-      .loadAsync("/assets/flat-car/model.glb")
+    ((pa = withRetry(() => new ho().loadAsync("/assets/flat-car/model.glb"), { attempts: 3, label: 'flat car model' })
       .then(({ scene: i }) => {
         const e = (t) => {
           const n = i.getObjectByName(t);

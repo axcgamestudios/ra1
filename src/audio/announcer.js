@@ -2,6 +2,7 @@
 // speechSynthesis fallback when the audio files cannot load. Also owns a small
 // center-screen banner so every announcement is readable while muted.
 import { getAudioContext, getAudioInput, getAudioSettings } from './settings.js';
+import { fetchWithRetry } from '../core/net-retry.js';
 
 const CLIP_PATH = '/assets/audio/announcer/';
 const CLIPS = Object.freeze({
@@ -17,7 +18,7 @@ const CLIPS = Object.freeze({
   defeat: { file: 'defeat.mp3', text: 'Defeat.', banner: 'DEFEAT' },
 });
 
-const BANNER_MS = 1900;
+const BANNER_MS = 2100;
 const SAME_KIND_COOLDOWN = 850;
 const QUEUE_GAP = 260;
 const VOLUME = 0.9;
@@ -25,7 +26,7 @@ const VOLUME = 0.9;
 export function createAnnouncer(root, { isEnabled = () => getAudioSettings().announcer !== false } = {}) {
   const enabled = () => isEnabled();
   const buffers = new Map();
-  const failures = new Set();
+  const failures = new Map();
   const lastPlayed = new Map();
   const queue = [];
   let playing = false;
@@ -36,17 +37,22 @@ export function createAnnouncer(root, { isEnabled = () => getAudioSettings().ann
   banner.setAttribute('role', 'status');
   banner.setAttribute('aria-live', 'polite');
   banner.hidden = true;
+  banner.innerHTML = '<span class="announcer-banner__flash" aria-hidden="true"></span>' +
+    '<span class="announcer-banner__text"></span>' +
+    '<span class="announcer-banner__bar" aria-hidden="true"><i></i></span>';
   (root ?? document.body).append(banner);
+  const bannerText = banner.querySelector('.announcer-banner__text');
+  const bannerBar = banner.querySelector('.announcer-banner__bar');
 
   function showBanner(kind, team) {
     const clip = CLIPS[kind];
     if (!clip) return;
-    banner.textContent = clip.banner;
+    bannerText.textContent = clip.banner;
     banner.dataset.team = team === 0 ? 'blue' : team === 1 ? 'orange' : '';
     banner.dataset.kind = kind;
     banner.hidden = false;
     banner.classList.remove('is-visible');
-    // Restart the CSS animation.
+    // Restart the CSS animations (text punch-in + accent bar sweep).
     void banner.offsetWidth;
     banner.classList.add('is-visible');
     clearTimeout(bannerTimer);
@@ -55,16 +61,19 @@ export function createAnnouncer(root, { isEnabled = () => getAudioSettings().ann
 
   async function loadClip(kind) {
     if (buffers.has(kind)) return buffers.get(kind);
-    if (failures.has(kind)) return null;
+    // Retry clips, and let a later announcement try again after a failure —
+    // flaky mobile links must not permanently mute a line.
+    if (failures.has(kind) && performance.now() - failures.get(kind) < 30000) return null;
     try {
-      const response = await fetch(CLIP_PATH + CLIPS[kind].file);
+      const response = await fetchWithRetry(CLIP_PATH + CLIPS[kind].file, {}, { attempts: 2, label: `announcer clip ${kind}` });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const data = await response.arrayBuffer();
       const buffer = await getAudioContext().decodeAudioData(data.slice(0));
       buffers.set(kind, buffer);
+      failures.delete(kind);
       return buffer;
     } catch {
-      failures.add(kind);
+      failures.set(kind, performance.now());
       return null;
     }
   }

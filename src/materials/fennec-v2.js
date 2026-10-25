@@ -2,10 +2,14 @@ import {Lt, Ne, F, Zt, nl, er, pr, qt, fr, Ut} from '../vendor/three.js';
 import {REFERENCE_MATCH_CAR_FRAGMENT} from './reference-match-car.js';
 import { REFERENCE_GRAPHICS_DEFAULTS, referencePaletteColors, referenceSunDirection } from '../settings/reference-graphics.js';
 import { classifyCarSurface } from './car.js';
+import { fetchWithRetry } from '../core/net-retry.js';
 let lightingPromise;
 export const resolveFennecV2Asset = url => url === '/assets/sketchfab/fennec/model.glb' ? '/assets/sketchfab/fennec-v2/model.glb' : url;
 export function loadFennecV2Lighting() {
-  return lightingPromise ??= fetch('/assets/lighting/open-me-park.bin').then(async response => {
+  // Retried, and the cache RESETS on failure: one dropped request on a flaky
+  // link used to poison this promise forever, so every later car load
+  // (garage swaps, bot matches, online rosters) failed until a full reload.
+  const attempt = () => fetchWithRetry('/assets/lighting/open-me-park.bin', {}, { attempts: 3, label: 'car HDR lighting' }).then(async response => {
     if (!response.ok) throw new Error('Fennec v2 HDR lighting failed to load');
     const buffer = await response.arrayBuffer();
     if (buffer.byteLength !== 1048560) throw new Error('Invalid compact HDR lighting size');
@@ -28,6 +32,8 @@ export function loadFennecV2Lighting() {
     cube.colorSpace = ''; cube.needsUpdate = true;
     return cube;
   });
+  lightingPromise ??= attempt().catch(error => { lightingPromise = null; throw error; });
+  return lightingPromise;
 }
 const vertex = `
 #include <common>

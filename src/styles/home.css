@@ -5,11 +5,15 @@
 #app .arena-home.is-orbiting { cursor:grabbing; }
 /* Rocket League wordmark: white ROCKET over a warm metallic LEAGUE with glow. */
 .arena-home .arcade-brand > span { background:linear-gradient(180deg,#ffe2a6,#ff9d3d); -webkit-background-clip:text; background-clip:text; color:transparent; filter:drop-shadow(0 2px 8px #ff8c3659); }
-/* Player card, top-right, RL style. */
-.arena-home__player { position:absolute; z-index:2; top:clamp(14px,2.8vh,32px); right:clamp(22px,3.2vw,58px); display:grid; gap:3px; text-align:right; padding:10px 16px;
+/* Player card, top-right, RL style: angled card with a level badge. */
+.arena-home__player { position:absolute; z-index:2; top:clamp(14px,2.8vh,32px); right:clamp(22px,3.2vw,58px); display:grid; gap:5px; text-align:right; padding:12px 18px 12px 30px;
   background:linear-gradient(100deg,#0b2c4bd9,#04131fcc); border:1px solid #2c5a7a; border-radius:8px;
-  clip-path:polygon(8% 0,100% 0,100% 100%,0 100%); pointer-events:none; }
+  clip-path:polygon(14% 0,100% 0,100% 100%,0 100%); pointer-events:none; }
 .arena-home__player-name { font:900 clamp(13px,1.2vw,17px)/1 "Arial Narrow",Arial,sans-serif; letter-spacing:.06em; color:#eaf6ff; }
+.arena-home__player-meta { display:flex; align-items:center; justify-content:flex-end; gap:8px; }
+.arena-home__player-level { font:900 11px/1 "Lilita One",var(--rl-font,Archivo,sans-serif); letter-spacing:.06em; color:#0a2d4f;
+  padding:4px 9px; border-radius:4px; background:linear-gradient(180deg,#ffe9b0,#ffb648);
+  box-shadow:0 0 12px #ffb64866, inset 0 -2px 0 #b97a1e; font-style:normal; }
 .arena-home__player-rank { font:700 9px/1 Archivo,Arial,sans-serif; letter-spacing:.24em; color:#7fb2cc; }
 .arena-home__header { position:absolute; z-index:2; top:clamp(14px,2.8vh,32px); left:clamp(22px,3.2vw,58px); display:flex; flex-direction:column; align-items:flex-start; gap:0; transform:none; pointer-events:none; }
 .arena-home__logo { width:clamp(70px,8vw,112px); height:auto; margin-bottom:-8px; object-fit:contain; filter:drop-shadow(0 6px 10px #001127aa); }
@@ -29,20 +33,36 @@
 .arena-home .play-copy { display:flex; flex-direction:column; justify-content:center; height:100%; }
 .arena-home .play-copy strong { font-size:clamp(23px,1.9vw,34px); font-weight:900; }
 .arena-home .play-copy small { display:block; margin-top:4px; font-size:clamp(10px,.95vw,15px); font-weight:900; letter-spacing:.03em; }
-#app .arena-home.is-play-menu { background:#07131bdc; cursor:default; }
+#app .arena-home.is-play-menu { background:#07131bd6; cursor:default; }
 .arena-home.is-play-menu .arena-home__header { visibility:hidden; }
 .arena-play { position:absolute; inset:0; }
 #app .arena-home .arena-play__title { position:absolute; top:2.3%; left:2%; margin:0; font:italic 400 clamp(70px,10vw,168px)/1 Arial,Helvetica,sans-serif; letter-spacing:1.5px; color:#ded9e626; }
-.arena-play__grid { position:absolute; left:14%; right:14%; top:30%; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:13px; }
-#app .arena-mode { position:relative; display:block; min-width:0; aspect-ratio:381/238; padding:0; border:2px solid #277da5; border-bottom-color:#25465c; background:#082439; border-radius:0; text-align:left; overflow:hidden; transition:transform 180ms ease,border-color 150ms ease; cursor:pointer; }
-.arena-mode img { display:block; width:100%; height:100%; object-fit:cover; pointer-events:none; }
-.arena-mode > span { position:absolute; left:0; right:0; bottom:0; padding:20px 18px 15px; color:#f5f9ff; background:linear-gradient(transparent,#020d1ad9); }
-.arena-mode strong { display:block; font:400 clamp(15px,1.35vw,22px)/1.1 Arial,sans-serif; }
-.arena-mode small { display:block; margin-top:6px; font:400 clamp(10px,.8vw,13px)/1.2 Arial,sans-serif; color:#c4e3f0; }
-#app .arena-mode:is(:hover,:focus-visible) { outline:none; transform:scale(1.045); z-index:2; border-color:#cefbff; box-shadow:0 0 0 1px #91ecff,0 0 17px #09bdff70; }
-#app .arena-home .arena-play__actions { position:absolute; left:clamp(22px,3.2vw,58px); bottom:clamp(108px,16vh,155px); display:flex; flex-direction:row; gap:5px; }
-#app .arena-play__actions button { width:clamp(125px,11vw,183px); height:39px; padding:0; border:0; border-radius:0; clip-path:polygon(4% 0,100% 0,96% 100%,0 100%); background:#000c; color:white; font:italic 400 16px Arial,sans-serif; cursor:pointer; }
-#app .arena-play__actions button:is(:hover,:focus-visible) { outline:none; background:#09668a; color:#cefbff; }
-@media(max-width:720px) { .arena-home__navigation { width:min(70vw,360px); } .arena-home__player { padding:8px 12px; } .arena-play__grid { left:5%;right:5%;top:24%;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px; } .arena-mode > span { padding:15px 10px 10px; } .arena-mode small { font-size:10px; } }
-@media(max-height:570px) { .arena-home__navigation { top:49%;width:clamp(240px,30vw,390px); } #app .arena-home__choice { height:36px;font-size:19px; } #app .arena-home__choice.is-play { height:52px; } .arena-home .play-copy strong { font-size:23px; } .arena-home .play-copy small { font-size:10px; } .arena-home .play-key { width:32px;font-size:21px; } .arena-play__grid { left:12%;right:12%;top:28%;grid-template-columns:repeat(3,minmax(0,1fr)); } #app .arena-home .arena-play__actions { left:auto;right:20px;bottom:18px; } .arena-mode small { font-size:10px; } }
+/* Play mode list, Rocket League server-list style: tall full-width rows with
+   an accent rail and a bright selected state (see the reference screenshot). */
+.arena-play__list { position:absolute; left:clamp(22px,9vw,150px); right:clamp(22px,9vw,150px); top:50%; transform:translateY(-52%);
+  display:flex; flex-direction:column; gap:clamp(8px,1.1vh,14px); }
+#app .arena-play__item { position:relative; display:flex; align-items:center; justify-content:space-between; gap:18px;
+  min-height:clamp(56px,7.6vh,92px); padding:0 clamp(24px,2.6vw,44px) 0 clamp(30px,2.8vw,48px); border:0; cursor:pointer;
+  color:#e8f2fb; text-align:left; background:linear-gradient(100deg,#0d3c68cc,#031a31a8 86%);
+  clip-path:polygon(0 0,100% 0,calc(100% - 22px) 100%,0 100%);
+  font:italic 900 clamp(20px,2.1vw,34px)/1 "Arial Narrow",Arial,sans-serif; letter-spacing:.03em;
+  transform:translateX(0); transition:transform 150ms ease,background 150ms ease,color 150ms ease; }
+#app .arena-play__item small { display:block; font:700 clamp(9px,.8vw,12px)/1.3 Archivo,Arial,sans-serif; font-style:normal; letter-spacing:.22em; color:#8fc2dd; }
+#app .arena-play__item::before { content:""; position:absolute; inset:0 auto 0 0; width:5px;
+  background:linear-gradient(180deg,#7fe4ff,#1f8fd6); opacity:.55; transition:width 150ms ease,opacity 150ms ease; }
+#app .arena-play__item:is(:hover,:focus-visible) { outline:none; color:#ffffff;
+  background:linear-gradient(100deg,#1363a5f0,#07304fd9 86%); transform:translateX(12px);
+  box-shadow:-14px 0 34px #06a5ff26; }
+#app .arena-play__item:is(:hover,:focus-visible)::before { width:13px; opacity:1; }
+#app .arena-play__item:is(:hover,:focus-visible) small { color:#bfe4f7; }
+.arena-play__footer { position:absolute; left:clamp(22px,3.2vw,58px); right:clamp(22px,3.2vw,58px); bottom:clamp(26px,6vh,64px);
+  display:flex; align-items:center; gap:22px; }
+.arena-play__footer button { width:clamp(125px,11vw,183px); height:42px; padding:0; border:0; border-radius:0;
+  clip-path:polygon(4% 0,100% 0,96% 100%,0 100%); background:#000c; color:white;
+  font:italic 400 17px Arial,sans-serif; cursor:pointer; }
+.arena-play__footer button:is(:hover,:focus-visible) { outline:none; background:#09668a; color:#cefbff; }
+.arena-play__hint { margin:0; font:italic 700 clamp(13px,1.15vw,18px)/1.25 "Arial Narrow",Arial,sans-serif; letter-spacing:.02em; color:#cfe7f5;
+  text-shadow:0 1px 6px #000000b3; }
+@media(max-width:720px) { .arena-home__navigation { width:min(70vw,360px); } .arena-home__player { padding:8px 12px 8px 22px; } .arena-play__list { left:5%; right:5%; top:24%; transform:none; } #app .arena-play__item { min-height:56px; } .arena-play__footer { bottom:18px; flex-direction:column; align-items:flex-start; gap:10px; } }
+@media(max-height:570px) { .arena-home__navigation { top:49%;width:clamp(240px,30vw,390px); } #app .arena-home__choice { height:36px;font-size:19px; } #app .arena-home__choice.is-play { height:52px; } .arena-home .play-copy strong { font-size:23px; } .arena-home .play-copy small { font-size:10px; } .arena-home .play-key { width:32px;font-size:21px; } .arena-play__list { top:20%; transform:none; } #app .arena-play__item { min-height:48px; } .arena-play__footer { bottom:14px; } }
 @media(prefers-reduced-motion:reduce) { #app .arena-home button { transition:none; } }

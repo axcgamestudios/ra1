@@ -41,7 +41,7 @@ try {
     await page.goto(url.href, { waitUntil: 'domcontentloaded' });
     await page.locator('.arena-home:not([hidden])').waitFor({ timeout: 90000 });
     await page.locator('[data-home="play"]').click();
-    assert.equal(await page.locator('.arena-mode').count(), 4);
+    assert.equal(await page.locator('.arena-play__item').count(), 4);
     return { page, name };
   }
   const a = await player('Release Check One');

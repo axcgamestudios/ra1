@@ -78,19 +78,76 @@
 #app .online-private-roster .online-empty-slot { border-left:3px dashed #326484;color:#6d9ab3;font-style:italic;background:#04121f; }
 
 /* ------------------------------------------------------- announcer banner ---- */
-#app .announcer-banner { position:fixed;left:50%;top:24%;transform:translateX(-50%) scale(1);z-index:60;
-  pointer-events:none;text-align:center;font:900 clamp(30px,6vw,64px)/1 "Lilita One",var(--rl-font,Archivo,sans-serif);
-  letter-spacing:.03em;color:#fff;text-shadow:0 0 22px #46c8ff,0 4px 0 #0a2c47,0 10px 34px #000000a6;opacity:0; }
-#app .announcer-banner.is-visible { animation:announcer-pop 1.9s ease-out forwards; }
-#app .announcer-banner[data-team="blue"] { color:#9fe0ff;text-shadow:0 0 26px #40beff,0 4px 0 #0a2c47,0 10px 34px #000000a6; }
-#app .announcer-banner[data-team="orange"] { color:#ffd9a8;text-shadow:0 0 26px #ff9436,0 4px 0 #47230a,0 10px 34px #000000a6; }
-#app .announcer-banner[data-kind="defeat"],#app .announcer-banner[data-kind="victory"] { top:20%; }
+/* Rocket League style: skewed slab text with a vertical gradient fill, a
+   bright rim, a hard drop shadow and an angled accent bar that sweeps in.
+   Each event kind carries its own palette via --ann-* custom properties. */
+#app .announcer-banner { position:fixed;left:50%;top:23%;transform:translateX(-50%);z-index:60;
+  pointer-events:none;text-align:center;opacity:0;
+  --ann-hi:#eaf7ff;--ann-mid:#9fe0ff;--ann-lo:#2f9dff;--ann-deep:#0b4d86;
+  --ann-glow:#40beff7a;--ann-bar:#40beff;--ann-bar-lo:#0d5f9e; }
+#app .announcer-banner.is-visible { animation:announcer-pop 2.1s cubic-bezier(.22,1,.36,1) forwards; }
+#app .announcer-banner__text { display:block;position:relative;
+  font:900 clamp(34px,7vw,80px)/0.95 "Lilita One",var(--rl-font,Archivo,sans-serif);
+  transform:skewX(-9deg);letter-spacing:.015em;white-space:nowrap;padding:0 .12em;
+  background:linear-gradient(180deg,#ffffff 4%,var(--ann-hi) 24%,var(--ann-mid) 52%,var(--ann-lo) 80%,var(--ann-deep) 100%);
+  -webkit-background-clip:text;background-clip:text;color:transparent;
+  filter:drop-shadow(0 4px 0 #041028b8) drop-shadow(0 12px 30px #00000080) drop-shadow(0 0 26px var(--ann-glow)); }
+#app .announcer-banner__flash { position:absolute;inset:-34% -18%;border-radius:50%;pointer-events:none;
+  background:radial-gradient(closest-side,var(--ann-glow),transparent 72%);opacity:0; }
+#app .announcer-banner.is-visible .announcer-banner__flash { animation:announcer-flash 2.1s ease-out forwards; }
+#app .announcer-banner__bar { display:block;margin:10px auto 0;width:min(46vw,430px);height:7px;
+  transform:skewX(-24deg);overflow:hidden;background:#04102899; }
+#app .announcer-banner__bar i { display:block;height:100%;width:100%;transform:scaleX(0);transform-origin:left center;
+  background:linear-gradient(90deg,var(--ann-bar-lo),var(--ann-bar) 55%,#ffffff);
+  box-shadow:0 0 14px var(--ann-glow); }
+#app .announcer-banner.is-visible .announcer-banner__bar i { animation:announcer-bar 2.1s cubic-bezier(.2,.9,.25,1) forwards; }
+/* Team palettes: the goal scorer's colors ride the banner. */
+#app .announcer-banner[data-team="blue"] { --ann-hi:#f0fbff;--ann-mid:#9fe0ff;--ann-lo:#2f9dff;--ann-deep:#0b4d86;
+  --ann-glow:#40beff85;--ann-bar:#59c1ff;--ann-bar-lo:#0d5f9e; }
+#app .announcer-banner[data-team="orange"] { --ann-hi:#fff7ea;--ann-mid:#ffd9a8;--ann-lo:#ff9436;--ann-deep:#8a3d07;
+  --ann-glow:#ff943685;--ann-bar:#ffb066;--ann-bar-lo:#a05613; }
+/* Event palettes (only when the announcer has no team context). */
+#app .announcer-banner[data-kind="what-a-save"] { --ann-hi:#eafffb;--ann-mid:#9ff2e6;--ann-lo:#19c6b0;--ann-deep:#076a5e;
+  --ann-glow:#2fe0c980;--ann-bar:#3ee6cf;--ann-bar-lo:#0a7d6e; }
+#app .announcer-banner[data-kind="epic-save"] { --ann-hi:#fffbe8;--ann-mid:#ffe27a;--ann-lo:#ffb830;--ann-deep:#8a5a08;
+  --ann-glow:#ffcf5c8c;--ann-bar:#ffd05e;--ann-bar-lo:#a5700f; }
+#app .announcer-banner[data-kind="shot-on-goal"],#app .announcer-banner[data-kind="nice-shot"] { --ann-hi:#ffffff;--ann-mid:#dceeff;--ann-lo:#7fb9e6;--ann-deep:#1b4a70;
+  --ann-glow:#bcdcff73;--ann-bar:#9fd2ff;--ann-bar-lo:#2a5f8f; }
+#app .announcer-banner[data-kind="great-pass"],#app .announcer-banner[data-kind="what-a-play"] { --ann-hi:#fdf4ff;--ann-mid:#efb2ff;--ann-lo:#c05bff;--ann-deep:#5a1d96;
+  --ann-glow:#c05bff7d;--ann-bar:#cf7bff;--ann-bar-lo:#6f2bb0; }
+#app .announcer-banner[data-kind="demolition"] { --ann-hi:#fff1ee;--ann-mid:#ffb3a3;--ann-lo:#ff5238;--ann-deep:#7e1a0b;
+  --ann-glow:#ff523887;--ann-bar:#ff6b4a;--ann-bar-lo:#96230e; }
+#app .announcer-banner[data-kind="victory"] { --ann-hi:#fffbe8;--ann-mid:#ffe27a;--ann-lo:#ffb830;--ann-deep:#8a5a08;
+  --ann-glow:#ffcf5c8c;--ann-bar:#ffd05e;--ann-bar-lo:#a5700f;top:20%; }
+#app .announcer-banner[data-kind="defeat"] { --ann-hi:#f2f5f7;--ann-mid:#c3ccd3;--ann-lo:#8a979f;--ann-deep:#4a565c;
+  --ann-glow:#9fb0ba75;--ann-bar:#aebbc2;--ann-bar-lo:#5d6b71;top:20%; }
+/* Demolition lands with an impact shake on top of the punch-in. */
+#app .announcer-banner[data-kind="demolition"].is-visible .announcer-banner__text { animation:announcer-shake .5s linear .06s; }
+@media(max-width:640px) { #app .announcer-banner { top:26%; } #app .announcer-banner__text { white-space:normal; } }
 @keyframes announcer-pop {
-  0% { opacity:0;transform:translateX(-50%) scale(.6); }
-  12% { opacity:1;transform:translateX(-50%) scale(1.08); }
-  22% { transform:translateX(-50%) scale(1); }
-  78% { opacity:1; }
-  100% { opacity:0;transform:translateX(-50%) scale(1.02); }
+  0% { opacity:0;transform:translateX(-50%) translateY(18px) scale(1.6); }
+  11% { opacity:1;transform:translateX(-50%) translateY(0) scale(.94); }
+  18% { transform:translateX(-50%) scale(1.05); }
+  26% { transform:translateX(-50%) scale(1); }
+  82% { opacity:1;transform:translateX(-50%) scale(1); }
+  100% { opacity:0;transform:translateX(-50%) translateY(-14px) scale(1.03); }
+}
+@keyframes announcer-bar {
+  0% { transform:scaleX(0); }
+  19% { transform:scaleX(1.02); }
+  26% { transform:scaleX(1); }
+  88% { transform:scaleX(1);opacity:1; }
+  100% { transform:scaleX(1);opacity:0; }
+}
+@keyframes announcer-flash {
+  0% { opacity:0; }
+  9% { opacity:.9; }
+  30% { opacity:0; }
+}
+@keyframes announcer-shake {
+  0%,100% { translate:0 0; }
+  15% { translate:-7px 2px; } 30% { translate:6px -2px; } 45% { translate:-5px 1px; }
+  60% { translate:4px -1px; } 75% { translate:-3px 1px; } 90% { translate:2px 0; }
 }
 
 /* ------------------------------------------------------------- scoreboard ---- */
@@ -115,7 +172,26 @@
 #app .arena-scoreboard__clock { font:900 22px/1 "Lilita One",var(--rl-font,Archivo,sans-serif);color:#eaf6ff;
   font-variant-numeric:tabular-nums;letter-spacing:.04em; }
 #app .arena-scoreboard__label { font:700 9px/1 Archivo,sans-serif;letter-spacing:.3em;color:#5e86a0;margin-top:4px; }
-#app .arena-scoreboard__columns { display:grid;grid-template-columns:1fr 1fr;gap:0;padding:10px 14px; }
+#app .arena-scoreboard__mode { font:700 8px/1 Archivo,sans-serif;letter-spacing:.34em;color:#41647c;margin-top:3px; }
+#app .arena-scoreboard__clockwrap.is-overtime { background:linear-gradient(180deg,#2a1c04,#160f02);border-color:#7a5a16; }
+#app .arena-scoreboard__clockwrap.is-overtime .arena-scoreboard__clock { color:#ffd666;text-shadow:0 0 18px #ffb83080; }
+#app .arena-scoreboard__clockwrap.is-overtime .arena-scoreboard__label { color:#ffb830;animation:scoreboard-overtime 1.4s ease-in-out infinite; }
+#app .arena-scoreboard__clockwrap.is-overtime .arena-scoreboard__mode { color:#8a6a1e; }
+@keyframes scoreboard-overtime { 0%,100% { opacity:1; } 50% { opacity:.45; } }
+#app .arena-scoreboard__body { display:grid;grid-template-columns:auto 1fr auto;gap:12px;padding:12px 14px;align-items:start; }
+/* RL-style side rails: career wins per team plus the match MVP's points. */
+#app .arena-scoreboard__side { display:grid;justify-items:center;gap:4px;padding:12px 10px;min-width:86px; }
+#app .arena-scoreboard__side--blue { background:linear-gradient(180deg,#0b2c47cc,#051a2c66);border-left:4px solid #3ea6ff;
+  clip-path:polygon(0 0,100% 6%,100% 94%,0 100%); }
+#app .arena-scoreboard__side--orange { background:linear-gradient(180deg,#6b3410cc,#3a1d0766);border-right:4px solid #ff9a3d;
+  clip-path:polygon(0 6%,100% 0,100% 100%,0 94%); }
+#app .arena-scoreboard__side b { font:900 26px/1 "Lilita One",var(--rl-font,Archivo,sans-serif);font-variant-numeric:tabular-nums;color:#eaf6ff; }
+#app .arena-scoreboard__side--blue b { color:#8fd8ff; }
+#app .arena-scoreboard__side--orange b { color:#ffbf85; }
+#app .arena-scoreboard__side span { font:700 9px/1 Archivo,sans-serif;letter-spacing:.26em;color:#7fa8c0; }
+#app .arena-scoreboard__side i { font:900 10px/1 Archivo,sans-serif;font-style:normal;letter-spacing:.12em;color:#ffe89c;
+  padding:3px 8px;border-radius:3px;background:#6b5410d9;margin-top:6px;white-space:nowrap; }
+#app .arena-scoreboard__columns { display:grid;grid-template-columns:1fr 1fr;gap:0;padding:0; }
 #app .arena-scoreboard__team { border-collapse:collapse;width:100%; }
 #app .arena-scoreboard__team--blue { padding-right:10px; }
 #app .arena-scoreboard__team--orange { padding-left:10px; }
@@ -137,7 +213,10 @@
 #app .arena-scoreboard__hint { padding:9px 18px;font-size:10px;color:#6d9ab3;letter-spacing:.18em;text-align:center;
   border-top:1px solid #14374f;background:#031a2c; }
 @media(max-width:640px) {
-  #app .arena-scoreboard__columns { grid-template-columns:1fr;gap:6px;padding:8px 10px; }
+  #app .arena-scoreboard__body { grid-template-columns:1fr;gap:6px;padding:8px 10px; }
+  #app .arena-scoreboard__side { min-width:0;padding:8px 6px; }
+  #app .arena-scoreboard__side--orange { order:3; }
+  #app .arena-scoreboard__columns { grid-template-columns:1fr;gap:6px; }
   #app .arena-scoreboard__team--blue { padding-right:0; }
   #app .arena-scoreboard__team--orange { padding-left:0; }
   #app .arena-scoreboard__team-score b { font-size:34px; }

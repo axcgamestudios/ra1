@@ -3,6 +3,7 @@ import { PHYSICS_PRESETS, resolvePhysicsSelection, resolveVisualHitboxFamily } f
 import { initializeGameplayPhysics } from "./source-runtime.js";
 import { addConfiguredCar, readNativeCarConfig } from "./car-config.js";
 import { _ } from "../core/class-fields.js";
+import { fetchWithRetry } from "../core/net-retry.js";
 import { jC } from "../vendor/legacy-physics.js";
 import { BALL_ACTIONS, CAR_STATE, STATE_LAYOUT, _C, getTeamAssignment, kf, no, u0 } from "./state-layout.js";
 
@@ -32,13 +33,13 @@ class PhysicsSimulation {
   async init(dependencies) {
     this.module = await initializeGameplayPhysics(jC, this.physicsSelection, dependencies);
     const e = await (
-        await fetch("/assets/arena/collision/manifest.json")
+        await fetchWithRetry("/assets/arena/collision/manifest.json", {}, { attempts: 3, label: 'collision manifest' })
       ).json(),
       t = await Promise.all(
         e.map(
           async (A) =>
             new Uint8Array(
-              await (await fetch(`/assets/arena/collision/${A}`)).arrayBuffer(),
+              await (await fetchWithRetry(`/assets/arena/collision/${A}`, {}, { attempts: 3, label: 'collision mesh' })).arrayBuffer(),
             ),
         ),
       ),
@@ -102,7 +103,7 @@ class PhysicsSimulation {
       await candidate.init({
         expectedHash: NETWORK_CORE_SHA256,
         fetchBytes: async () => {
-          const response = await fetch('/physics/rocketsim-network.wasm', { cache: 'no-cache' });
+          const response = await fetchWithRetry('/physics/rocketsim-network.wasm', { cache: 'no-cache' }, { attempts: 3, label: 'online physics' });
           if (!response.ok) throw Error(`Online physics unavailable (HTTP ${response.status})`);
           return new Uint8Array(await response.arrayBuffer());
         },

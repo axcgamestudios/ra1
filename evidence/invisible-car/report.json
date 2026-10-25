@@ -1,0 +1,322 @@
+{
+  "boot": {
+    "exists": true,
+    "carVisible": true,
+    "visual": "fennec",
+    "inScene": true,
+    "sceneChildren": 37,
+    "meshes": 31,
+    "visibleMeshes": 27,
+    "materials": 27,
+    "missingMaterial": 0,
+    "bounds": {
+      "min": [
+        -72,
+        -14.052240371704102,
+        -35.71240997314453
+      ],
+      "max": [
+        74.51582336425781,
+        33.192626953125,
+        35.712406158447266
+      ]
+    },
+    "pos": [
+      -2048,
+      17,
+      2560
+    ]
+  },
+  "swaps": [
+    {
+      "id": "fennec",
+      "exists": true,
+      "carVisible": true,
+      "visual": "fennec",
+      "inScene": true,
+      "sceneChildren": 37,
+      "meshes": 31,
+      "visibleMeshes": 27,
+      "materials": 27,
+      "missingMaterial": 0,
+      "bounds": {
+        "min": [
+          -72,
+          -14.052240371704102,
+          -35.71240997314453
+        ],
+        "max": [
+          74.51582336425781,
+          33.192626953125,
+          35.712406158447266
+        ]
+      },
+      "pos": [
+        0,
+        17,
+        4608
+      ]
+    },
+    {
+      "id": "octane-original",
+      "exists": true,
+      "carVisible": true,
+      "visual": "octane-original",
+      "inScene": true,
+      "sceneChildren": 45,
+      "meshes": 30,
+      "visibleMeshes": 26,
+      "materials": 26,
+      "missingMaterial": 0,
+      "bounds": {
+        "min": [
+          -72,
+          -14.307930946350098,
+          -36.21232223510742
+        ],
+        "max": [
+          73.51660919189453,
+          43.39323425292969,
+          36.2532844543457
+        ]
+      },
+      "pos": [
+        256,
+        17,
+        3840
+      ]
+    },
+    {
+      "id": "challenger",
+      "exists": true,
+      "carVisible": true,
+      "visual": "challenger",
+      "inScene": true,
+      "sceneChildren": 53,
+      "meshes": 48,
+      "visibleMeshes": 44,
+      "materials": 44,
+      "missingMaterial": 0,
+      "bounds": {
+        "min": [
+          -72,
+          -12.52529525756836,
+          -37.032081604003906
+        ],
+        "max": [
+          74.85903930664062,
+          32.26221466064453,
+          37.03123092651367
+        ]
+      },
+      "pos": [
+        -256,
+        17,
+        3840
+      ]
+    },
+    {
+      "id": "spectre",
+      "exists": true,
+      "carVisible": true,
+      "visual": "spectre",
+      "inScene": true,
+      "sceneChildren": 61,
+      "meshes": 31,
+      "visibleMeshes": 27,
+      "materials": 27,
+      "missingMaterial": 0,
+      "bounds": {
+        "min": [
+          -72,
+          -14.052240371704102,
+          -35.50005340576172
+        ],
+        "max": [
+          74.51582336425781,
+          33.192626953125,
+          35.50004959106445
+        ]
+      },
+      "pos": [
+        0,
+        17,
+        4608
+      ]
+    },
+    {
+      "id": "vesper",
+      "exists": true,
+      "carVisible": true,
+      "visual": "vesper",
+      "inScene": true,
+      "sceneChildren": 69,
+      "meshes": 37,
+      "visibleMeshes": 33,
+      "materials": 33,
+      "missingMaterial": 0,
+      "bounds": {
+        "min": [
+          -72,
+          -17.85795021057129,
+          -45.627254486083984
+        ],
+        "max": [
+          75.81539154052734,
+          28.401031494140625,
+          45.52277374267578
+        ]
+      },
+      "pos": [
+        -256,
+        17,
+        3840
+      ]
+    },
+    {
+      "id": "amethyst",
+      "exists": true,
+      "carVisible": true,
+      "visual": "amethyst",
+      "inScene": true,
+      "sceneChildren": 77,
+      "meshes": 38,
+      "visibleMeshes": 34,
+      "materials": 34,
+      "missingMaterial": 0,
+      "bounds": {
+        "min": [
+          -72,
+          -18.460744857788086,
+          -36.288326263427734
+        ],
+        "max": [
+          74.51582336425781,
+          33.192626953125,
+          36.183841705322266
+        ]
+      },
+      "pos": [
+        256,
+        17,
+        3840
+      ]
+    }
+  ],
+  "matchStart": {
+    "self": {
+      "exists": true,
+      "carVisible": true,
+      "visual": "amethyst",
+      "inScene": true,
+      "sceneChildren": 94,
+      "meshes": 38,
+      "visibleMeshes": 34,
+      "materials": 34,
+      "missingMaterial": 0,
+      "bounds": {
+        "min": [
+          -72,
+          -18.460744857788086,
+          -36.288326263427734
+        ],
+        "max": [
+          74.51582336425781,
+          33.192626953125,
+          36.183841705322266
+        ]
+      },
+      "pos": [
+        256,
+        17,
+        3840
+      ]
+    },
+    "bot": {
+      "exists": true,
+      "carVisible": true,
+      "visual": "challenger",
+      "inScene": true,
+      "sceneChildren": 94,
+      "meshes": 42,
+      "visibleMeshes": 38,
+      "materials": 38,
+      "missingMaterial": 0,
+      "bounds": {
+        "min": [
+          -72,
+          -12.52529525756836,
+          -37.032081604003906
+        ],
+        "max": [
+          74.85903930664062,
+          32.26221466064453,
+          37.03123092651367
+        ]
+      },
+      "pos": [
+        -256,
+        17,
+        -3840
+      ]
+    }
+  },
+  "afterGoal": {
+    "self": {
+      "exists": true,
+      "carVisible": true,
+      "visual": "amethyst",
+      "inScene": true,
+      "sceneChildren": 94,
+      "meshes": 38,
+      "visibleMeshes": 34,
+      "materials": 34,
+      "missingMaterial": 0,
+      "bounds": {
+        "min": [
+          -72,
+          -18.460744857788086,
+          -36.288326263427734
+        ],
+        "max": [
+          74.51582336425781,
+          33.192626953125,
+          36.183841705322266
+        ]
+      },
+      "pos": [
+        256,
+        17,
+        3840
+      ]
+    },
+    "bot": {
+      "exists": true,
+      "carVisible": true,
+      "visual": "challenger",
+      "inScene": true,
+      "sceneChildren": 94,
+      "meshes": 42,
+      "visibleMeshes": 38,
+      "materials": 38,
+      "missingMaterial": 0,
+      "bounds": {
+        "min": [
+          -72,
+          -12.52529525756836,
+          -37.032081604003906
+        ],
+        "max": [
+          74.85903930664062,
+          32.26221466064453,
+          37.03123092651367
+        ]
+      },
+      "pos": [
+        -256,
+        17,
+        -3794
+      ]
+    }
+  }
+}

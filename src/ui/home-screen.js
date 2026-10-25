@@ -1,5 +1,6 @@
 // DOM overlay over the existing arena. The game owns the paused scene and camera.
 import { Ks } from '../input/controller-selection.js';
+import { playerLevel } from '../core/player-progress.js';
 
 export function mountHome(root, actions) {
   const panel = document.createElement('section');
@@ -8,7 +9,7 @@ export function mountHome(root, actions) {
   panel.setAttribute('aria-label', 'Rocket League home');
   panel.innerHTML = `
     <header class="arena-home__header"><img class="arena-home__logo" src="/assets/ui/rocket-arena-mark.webp" width="1254" height="1254" alt=""><div class="arcade-brand">ROCKET <span>LEAGUE</span></div></header>
-    <div class="arena-home__player" aria-label="Player card"><span class="arena-home__player-name" data-home-player>PLAYER</span><span class="arena-home__player-rank">CASUAL · ROOKIE</span></div>
+    <div class="arena-home__player" aria-label="Player card"><span class="arena-home__player-name" data-home-player>PLAYER</span><span class="arena-home__player-meta"><b class="arena-home__player-level" data-home-level>LVL 1</b><span class="arena-home__player-rank">CASUAL · ROOKIE</span></span></div>
     <div class="arena-home__navigation" data-home-page="main"><nav aria-label="Home menu">
       <button type="button" class="arena-home__choice is-play" data-home="play"><span class="play-key" aria-hidden="true">A</span><span class="play-copy"><strong>PLAY</strong><small>HIT THE FIELD</small></span></button>
       <button type="button" class="arena-home__choice" data-home="garage"><span>GARAGE</span></button>
@@ -16,12 +17,16 @@ export function mountHome(root, actions) {
     </nav></div>
     <section class="arena-play" data-home-page="play" hidden aria-label="Choose a game mode">
       <h1 class="arena-play__title">PLAY</h1>
-      <div class="arena-play__grid">
-        <button class="arena-mode" type="button" data-home="casual"><img src="/assets/menu/casual-original.webp" alt="" draggable="false"><span><strong>MULTIPLAYER</strong><small>Online · P2P 1v1 / 2v2 / 3v3 · Room code</small></span></button>
-        <button class="arena-mode" type="button" data-home="match"><img src="/assets/online/bots.webp" alt="" draggable="false"><span><strong>BOTS</strong><small>Offline · Three AI difficulties</small></span></button>
-        <button class="arena-mode" type="button" data-home="freeplay"><img src="/assets/menu/freeplay-original.webp" alt="" draggable="false"><span><strong>FREE PLAY</strong><small>Offline · Solo practice</small></span></button>
-      </div>
-      <nav class="arena-play__actions" aria-label="Play menu actions"><button type="button" data-home="back">BACK</button></nav>
+      <nav class="arena-play__list" aria-label="Game modes">
+        <button class="arena-play__item" type="button" data-home="match" data-hint="Set up a custom offline match with AI opponents."><span>EXHIBITION</span><small>OFFLINE · VS BOTS</small></button>
+        <button class="arena-play__item" type="button" data-home="freeplay" data-hint="Free training arena with unlimited boost and no opponents."><span>TRAINING</span><small>OFFLINE · FREE PLAY</small></button>
+        <button class="arena-play__item" type="button" data-home="host" data-hint="Host a peer-to-peer room and share the five-letter code."><span>HOST LOCAL LOBBY</span><small>ONLINE · CREATE A ROOM</small></button>
+        <button class="arena-play__item" type="button" data-home="join" data-hint="Choose a server to join from a list of servers."><span>JOIN LOCAL LOBBY</span><small>ONLINE · ENTER ROOM CODE</small></button>
+      </nav>
+      <footer class="arena-play__footer">
+        <button type="button" data-home="back">BACK</button>
+        <p class="arena-play__hint" data-play-hint role="status">Choose a game mode to start playing.</p>
+      </footer>
     </section>
     `;
   const homeButton = document.createElement('button');
@@ -31,8 +36,25 @@ export function mountHome(root, actions) {
   homeButton.setAttribute('aria-label', 'Open home screen');
   (root.querySelector('.hud-tools') ?? root).append(homeButton);
   root.append(panel);
-  // Player card mirrors the saved online display name, Rocket League style.
-  try { panel.querySelector('[data-home-player]').textContent = (localStorage.getItem('arena.p2p.name') || 'PLAYER').toUpperCase(); } catch {}
+  // Player card mirrors the saved online display name plus the local level,
+  // Rocket League style.
+  const syncPlayerCard = () => {
+    try { panel.querySelector('[data-home-player]').textContent = (localStorage.getItem('arena.p2p.name') || 'PLAYER').toUpperCase(); } catch {}
+    try { panel.querySelector('[data-home-level]').textContent = 'LVL ' + playerLevel(); } catch {}
+  };
+  syncPlayerCard();
+  // Play list hint bar: the focused/hovered mode explains itself, RL style.
+  const hint = panel.querySelector('[data-play-hint]');
+  const defaultHint = 'Choose a game mode to start playing.';
+  for (const item of panel.querySelectorAll('.arena-play__item')) {
+    const apply = () => { hint.textContent = item.dataset.hint || defaultHint; };
+    item.addEventListener('pointerenter', apply);
+    item.addEventListener('focus', apply);
+  }
+  for (const list of panel.querySelectorAll('.arena-play__list'))
+    list.addEventListener('focusout', () => {
+      if (!list.querySelector('.arena-play__item:focus')) hint.textContent = defaultHint;
+    });
   let visible = false, dirty = true, drag = null, poll = 0, page = 'main';
   let lastDirection = 0, lastMove = 0, previousConfirm = false, previousCancel = false;
   const orbit = { yaw: 2.087180175781252, pitch: 0.08, distance: 1 };
@@ -80,7 +102,8 @@ export function mountHome(root, actions) {
   function show() {
     if (visible) return;
     visible = true; dirty = true; panel.hidden = false; root.classList.add('home-open');
-    try { panel.querySelector('[data-home-player]').textContent = (localStorage.getItem('arena.p2p.name') || 'PLAYER').toUpperCase(); } catch {}
+    syncPlayerCard();
+    hint.textContent = defaultHint;
     actions.pause(true);
     setPage('main');
     const pad = Ks();

@@ -1,10 +1,11 @@
 // Full, editable gameplay engine. Legacy WASM is used only for the existing camera.
+import { fetchWithRetry } from '../core/net-retry.js';
 export const SOURCE_CORE_SHA256 = "4d3b9c9f2c2227bc72d292fb5f294ab1f435e34b8ac8300527ee9d833a829405";
 export const SOURCE_CORE_REVISION = "c2baacb8f4b441dd8505e63c2aeb5a1679b60b02";
 export const ORIGINAL_GAMEPLAY_CORE_SHA256 = "b66ba712456de771c38b587d21e31ac20cc11d94cb3876adbf81e1362ff66426";
 export async function initializeOriginalPhysics(factory, {
   fetchOriginalBytes = async () => {
-    const response = await fetch("/physics/original-launch.wasm", { cache: "no-cache" });
+    const response = await fetchWithRetry("/physics/original-launch.wasm", { cache: "no-cache" }, { attempts: 3, label: 'original physics' });
     if (!response.ok) throw Error(`Original physics unavailable (HTTP ${response.status})`);
     return new Uint8Array(await response.arrayBuffer());
   },
@@ -31,7 +32,7 @@ export async function initializeGameplayPhysics(factory, selection, dependencies
 }
 export async function initializeSourcePhysics(cameraFactory, {
   fetchBytes = async () => {
-    const response = await fetch("/physics/rocketsim-core.wasm", { cache: "no-cache" });
+    const response = await fetchWithRetry("/physics/rocketsim-core.wasm", { cache: "no-cache" }, { attempts: 3, label: 'RocketSim physics' });
     if (!response.ok) throw Error(`RocketSim physics unavailable (HTTP ${response.status})`);
     return new Uint8Array(await response.arrayBuffer());
   },
