@@ -1,14 +1,22 @@
 // Peer-to-peer host authority, ported from the dedicated server room.
-// The host browser runs the same deterministic WASM physics at 120 Hz, streams
-// binary snapshots at 60 Hz to every guest and only ever accepts inputs from
-// the guests. Full native checkpoints ride every CHECKPOINT_EVERY-th snapshot
-// — 10 Hz for duel rosters, 5 Hz for team rosters (2v2/3v3) to halve the
-// checkpoint bandwidth of 4-6 car states.
+// The host browser runs the same deterministic WASM physics at 120 Hz and
+// streams binary snapshots to every guest; only inputs travel guest -> host.
+// Full native checkpoints ride every CHECKPOINT_EVERY-th snapshot — 10 Hz for
+// duel rosters, ~2.5-5 Hz for team rosters (2v2/3v3) to keep the checkpoint
+// bandwidth of 4-6 car states bounded.
+//
+// Snapshot cadence is MODE-AWARE (60/40/30 Hz): a 6-car relay link cannot carry
+// 60 Hz snapshots without SCTP queueing, and queueing converts bandwidth
+// shortage into delay — the exact "teleporting/lag" players feel. Guests
+// interpolate, so 30 Hz still renders smooth motion at a third of the bytes.
+// Snapshots are also COALESCED per host frame: a catch-up batch that runs 12
+// physics ticks emits ONE snapshot (the newest) instead of six back-to-back
+// packets, so guests never receive intra-frame bursts that trip the jitter
+// estimator and stack up in the send buffer.
 import { encodeSnapshot, NEUTRAL, SIM_HZ, SNAPSHOT_HZ, INPUT_HZ, validControls, validSequence } from './protocol.js';
 import { STATE_LAYOUT } from '../physics/state-layout.js';
 
 const COMMAND_TICKS = SIM_HZ / INPUT_HZ;
-const SNAPSHOT_EVERY = SIM_HZ / SNAPSHOT_HZ;
 const STALL_MS = 10000;
 
 // The HOST assigns command duration, exactly like the dedicated server did:
@@ -90,7 +98,7 @@ export class InputStream {
 // team matches pass guests: Map(slot -> { send(payload), congested? }) so each
 // data channel gets its own congestion valve.
 export class HostRoom {
-    constructor({ sim, match, players, send, guests, onEvent, congested, events }) {
+    constructor({ sim, match, players, send, guests, onEvent, congested, events, snapshotHz = SNAPSHOT_HZ }) {
         this.sim = sim;
         this.match = match;
         this.players = players;
@@ -99,6 +107,7 @@ export class HostRoom {
         // Optional backpressure probe (SCTP bufferedAmount): when a link cannot
         // carry the full snapshot stream, disposable snapshots are skipped so
         // latency stops compounding; the next snapshot carries the full state.
+        // Thresholds live with the channel construction in p2p.js.
         this.congested = congested ?? (() => false);
         this.guestSlots = players.slice(1).map((_, index) => index + 1);
         this.guests = new Map();
@@ -111,6 +120,10 @@ export class HostRoom {
         this.lastGuestInput = new Map(this.guestSlots.map(slot => [slot, -Infinity]));
         this.nativeCheckpoints = sim.module._physics_netStateVersion?.() === 1;
         this.checkpointEvery = this.guestSlots.length > 1 ? 12 : 6;
+        // Mode-aware cadence: 1v1 60 Hz, 2v2 40 Hz, 3v3 30 Hz.
+        this.snapshotEvery = Math.max(1, Math.round(SIM_HZ / Math.min(SNAPSHOT_HZ, Math.max(20, snapshotHz))));
+        this.snapshotDue = false;
+        this.snapshotWantsCheckpoint = false;
         this.active = false;
         this.terminal = false;
         this.tick = 0;
@@ -219,8 +232,22 @@ export class HostRoom {
             if (event === 'kickoff') this.afterGoal();
         }
         if (state.phase === 'ended') this.finish(state.winner, 'full_time');
-        if (this.tick % SNAPSHOT_EVERY === 0) this.sendSnapshot(false);
+        // Coalesced emission: mark the newest state due and let the host frame
+        // flush it once — never several snapshots inside one catch-up batch.
+        if (this.tick % this.snapshotEvery === 0) {
+            this.snapshotDue = true;
+            this.snapshotWantsCheckpoint ||= this.nativeCheckpoints && this.snapshotCount % this.checkpointEvery === 0;
+        }
         return true;
+    }
+    // Called once per host frame after the physics batch: sends at most ONE
+    // snapshot (the freshest state). Checkpoint cadence rides the flush count.
+    flushSnapshots() {
+        if (!this.snapshotDue) return;
+        const checkpoint = this.snapshotWantsCheckpoint;
+        this.snapshotDue = false;
+        this.snapshotWantsCheckpoint = false;
+        this.sendSnapshot(checkpoint);
     }
     afterGoal() {
         this.resetArena();

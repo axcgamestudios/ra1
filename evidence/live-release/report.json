@@ -1,0 +1,39 @@
+{
+  "checkedAt": "2026-10-21T14:55:24.487Z",
+  "site": "https://malikahed.github.io/rocket-arena-web/",
+  "expectedBuild": null,
+  "synthetic": true,
+  "rankedTested": false,
+  "humanInternetPlayVerified": false,
+  "checks": [
+    "Actual Pages configuration identifies the deployed commit and protocol",
+    "Deployed Pages loads the four-mode menu and honest Ranked account gate",
+    "Live backend is ready with compatible protocol and exact Pages CORS"
+  ],
+  "errors": [],
+  "frontend": {
+    "build": "94bdda7d41eb8c57a0c82969dcaaa3267a6b2f59",
+    "protocol": 2,
+    "serverUrl": "https://rocket-arena-online-beta.onrender.com",
+    "accountsConfigured": true
+  },
+  "browser": "153.0.8010.12",
+  "readinessAttempts": [
+    {
+      "status": 200,
+      "allowOrigin": "https://malikahed.github.io"
+    }
+  ],
+  "backend": {
+    "status": 200,
+    "allowOrigin": "https://malikahed.github.io",
+    "protocol": 2,
+    "ready": true,
+    "ranked": false,
+    "build": "b0470a02720368038ef33428f261c136f4b4a545",
+    "nativeCheckpoint": 1,
+    "nativePhysics": "6d92e76f35d6cd7e5df76fede54f690bdb6f0394f48cb81f3bc742871bec1992"
+  },
+  "success": false,
+  "failure": "Error: page.waitForFunction: Target page, context or browser has been closed"
+}

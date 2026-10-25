@@ -20,7 +20,10 @@ export class Garage {
     this.cards().forEach(button => button.addEventListener('click', () => this.select(button.dataset.carChoice)));
     this.overlay.querySelector('[data-car-equip]').addEventListener('click', () => this.choose(this.selected));
     this.overlay.querySelectorAll('[data-garage-category]').forEach(button => button.addEventListener('click', () => this.setCategory(button.dataset.garageCategory)));
-    this.overlay.querySelector('[data-garage-team]').addEventListener('click', () => { this.team = this.team === 'blue' ? 'orange' : 'blue'; this.syncControls(); this.stage.select(this.selected, this.team); });
+    this.overlay.querySelector('[data-garage-team]').addEventListener('click', () => this.setTeam(this.team === 'blue' ? 'orange' : 'blue'));
+    // Prominent BLUE/ORANGE tabs inside the paint and boost panels (the footer
+    // toggle stays as an extra affordance). Both drive the same team state.
+    this.overlay.querySelectorAll('[data-garage-team-tab]').forEach(button => button.addEventListener('click', () => this.setTeam(button.dataset.garageTeamTab)));
     this.overlay.querySelectorAll('[data-paint-color]').forEach(input => input.addEventListener('input', () => this.savePaint({ [input.dataset.paintColor]: input.value })));
     this.overlay.querySelectorAll('[data-color-swatch]').forEach(button => button.addEventListener('click', () => this.savePaint({ primary: button.dataset.colorSwatch })));
     this.overlay.querySelector('[data-car-finish]').addEventListener('change', event => { const finish = event.target.value, values = CAR_FINISHES[finish]; this.savePaint({ finish, roughness: values.roughness, metalness: values.metalness, clearcoat: values.clearcoat }); });
@@ -91,6 +94,11 @@ export class Garage {
     this.overlay.querySelector('[data-car-equip]').textContent = equipped ? 'EQUIPPED' : 'EQUIP CAR';
     this.overlay.querySelector('[data-car-equip]').disabled = equipped;
   }
+  setTeam(team) {
+    if (team !== 'blue' && team !== 'orange') return;
+    this.team = team;
+    this.syncControls(); this.stage.select(this.selected, this.team);
+  }
   syncControls() {
     const settings = getCarCustomization(this.selected, this.team);
     for (const input of this.overlay.querySelectorAll('[data-paint-color]')) input.value = settings[input.dataset.paintColor];
@@ -105,6 +113,11 @@ export class Garage {
     this.overlay.querySelector('[data-detail-finish]').textContent = CAR_FINISHES[settings.finish].label;
     this.overlay.querySelector('[data-detail-team]').textContent = `${this.team.toUpperCase()} TEAM`;
     this.overlay.querySelector('[data-garage-team]').textContent = this.team === 'blue' ? 'ORANGE TEAM' : 'BLUE TEAM';
+    for (const button of this.overlay.querySelectorAll('[data-garage-team-tab]')) {
+      const active = button.dataset.garageTeamTab === this.team;
+      button.classList.toggle('is-active', active);
+      button.setAttribute('aria-selected', String(active));
+    }
     this.overlay.style.setProperty('--boost-color', settings.boostColor);
     this.overlay.style.setProperty('--car-primary', settings.primary);
     this.overlay.style.setProperty('--car-pearl', settings.pearl);

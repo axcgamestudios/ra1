@@ -2,13 +2,15 @@ import { mountP2P } from '../online/p2p.js';
 import { MatchEvents } from '../match/match-events.js';
 import { createAnnouncer } from '../audio/announcer.js';
 import { createScoreboard, scoreboardData } from '../ui/scoreboard.js';
+import { createVictoryScreen } from '../ui/victory-screen.js';
+import { createSpeedMeter } from '../ui/speed-meter.js';
 import { applyStadiumAccents, getStadium, setStadium, subscribeStadium } from '../arena/stadium-themes.js';
 import { setCarMaterialQuality } from "../materials/car.js";
 import {FennecV2Post} from '../rendering/fennec-v2-post.js';
 import { ReferencePost } from '../rendering/reference-post.js';
 import { ReferenceLighting } from '../rendering/reference-lighting.js';
 import { getTheme } from '../rendering/theme.js';
-import { subscribeCarCustomization } from '../settings/car-customization.js';
+import { subscribeCarCustomization, getCarCustomization } from '../settings/car-customization.js';
 import { bindParkContactShadows } from "../materials/park-lighting.js";
 import { ArcadeBoostMeter } from "../ui/arcade-hud.js";
 import { GoalReplayBuffer } from "../match/goal-replay.js";
@@ -174,7 +176,7 @@ if (!an.querySelector("#loading")) {
     <div id="loading" data-state="loading" style="--load-progress: 0%">
       <div class="load__panel">
         <img class="load__mark" src="/assets/ui/rocket-arena-mark.webp" width="1254" height="1254" alt="" />
-        <h1 class="load__title">ROCKET <span>ARENA</span></h1>
+        <h1 class="load__title">ROCKET <span>LEAGUE</span></h1>
         <p class="load__tagline">Drive hard. Fly high. Own the field.</p>
         <div class="load__progress-block">
           <div class="load__status-row"><p class="load__label" role="status" aria-live="polite">Loading game code</p></div>
@@ -289,7 +291,7 @@ async function startGame() {
   R.onReset = T;
   const D = new TouchInput(an);
   D.onReset = T;
-  const N = new GameWorld(n.ballRadius, i, quality, initialGraphics.showStadium);
+  const N = new GameWorld(n.ballRadius, i, quality, initialGraphics.showStadium || initialGraphics.qualityPreset === "high");
   await Promise.all([
     trackLoadingTask("arena", N.loadArena(), "Arena ready", "Stadium geometry and lighting are ready."),
     trackLoadingTask("ball", N.loadBall(), "Ball ready", "The match ball is ready for kickoff."),
@@ -505,6 +507,7 @@ async function startGame() {
     },
     onStart: async (W) => {
       online?.leave();
+      victory.hide();
       returnHomeAfter = null;
       goalPresentation?.finish({ cancel: true });
       (await Promise.all([o.load(), N.ensureOpponent(JA(o.id).carVisual)]),
@@ -520,6 +523,7 @@ async function startGame() {
     },
     onLeave: () => {
       if (online?.active) { online.leave(); return; }
+      victory.hide();
       returnHomeAfter = null;
       goalPresentation?.finish({ cancel: true });
       (v(),
@@ -558,6 +562,7 @@ async function startGame() {
       ((le = !1), xe(), s.sync());
     });
   const Be = new ArcadeBoostMeter(an),
+    speedMeter = createSpeedMeter(an),
     Ze = document.createElement("p");
   ((Ze.className = "ball-cam-indicator"),
     (Ze.textContent = "Ball cam"),
@@ -615,7 +620,7 @@ async function startGame() {
   if (quality.environment) {
     const W = new NA(te);
     ((N.scene.environment = W.fromScene(new c0(), 0.04).texture),
-      (N.scene.environmentIntensity = 0.5),
+      (N.scene.environmentIntensity = quality.environmentIntensity ?? 0.5),
       W.dispose());
   } else {
     ((N.scene.environment = null), (N.scene.environmentIntensity = 0));
@@ -642,7 +647,7 @@ async function startGame() {
       generator.dispose();
     }
     N.scene.environment = quality.environment ? cachedEnvironment : null;
-    N.scene.environmentIntensity = quality.environment ? 0.5 : 0;
+    N.scene.environmentIntensity = quality.environment ? quality.environmentIntensity ?? 0.5 : 0;
     if (quality.effects) N.scene.add(N.ballSpeedTrail.object);
     else { N.resetBallTrail(); N.ballSpeedTrail.object.removeFromParent(); }
     N.scene.traverse(object => {
@@ -810,7 +815,7 @@ async function startGame() {
   renderGame(N.scene, H.camera);
   ze = performance.now();
   s.sync(ze);
-  completeLoadingTask("renderer", "Ready", "Entering Rocket Arena.");
+  completeLoadingTask("renderer", "Ready", "Entering Rocket League.");
   await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
   nd.remove();
   function wt(W) {
@@ -978,6 +983,11 @@ async function startGame() {
       s.currState[sr + CAR_STATE.IS_BOOSTING] === 1,
       a.state.mode === "freeplay" && V.boostOption === "unlimited",
     ),
+      // Animated speedometer: uu/s magnitude, community "KPH" convention.
+      speedMeter.update(
+        Math.hypot(s.currState[sr + CAR_STATE.VEL], s.currState[sr + CAR_STATE.VEL + 1], s.currState[sr + CAR_STATE.VEL + 2]),
+        s.currState[sr + CAR_STATE.SUPERSONIC] === 1 && s.currState[sr + CAR_STATE.DEMOED] !== 1,
+      ),
       He.mark());
     (He.mark(),
       quality.shadows && (te.shadowMap.needsUpdate = !0),
@@ -1019,14 +1029,15 @@ async function startGame() {
     }
   }
   // One entry point for every authority (offline sim or P2P host/guest feed):
-  // announcer voice + banner, goal explosion online and the stats scoreboard.
+  // announcer voice + banner and the goal explosion. The scoreboard itself
+  // is MANUAL ONLY (hold TAB): popping a DOM rebuild on every goal caused
+  // frame spikes exactly when the netcode could least afford them.
   function handleMatchEvents(events, stats, teams, roster) {
     for (const event of events ?? []) {
       if (event.kind === "goal") {
         announcer.say("goal", { team: event.team });
         // Online has no goal presentation; fire the (bigger) local explosion.
         if (online?.active) arenaEffects.goal(N.ball.position.clone(), event.team === 0 ? 0x55baff : 0xffab47);
-        scoreboard.show({ ...scoreboardView(stats, roster, teams), transient: 3800 });
       } else if (event.kind === "nice_shot") {
         setTimeout(() => announcer.say("nice-shot", { team: event.team }), 550);
       } else if (event.kind === "great_pass") {
@@ -1044,6 +1055,12 @@ async function startGame() {
     const events = matchEvents.update(n.state, goal, phase);
     if (events.length) handleMatchEvents(events, matchEvents.summary(), offlineTeams, offlineRoster());
   };
+  // Full time: Rocket League style victory screen (offline) with rematch and
+  // home actions; online builds its own result screen inside the P2P dialog.
+  const victory = createVictoryScreen(an, {
+    onRematch: () => { void pe.options.onStart({ aborted: false }); },
+    onHome: () => { pe.options.onLeave(); home.show(); },
+  });
   // Full time: victory/defeat call plus the final scoreboard.
   function watchMatchPhase() {
     if (a.state.phase === lastMatchPhase) return;
@@ -1053,7 +1070,14 @@ async function startGame() {
     const ownTeam = online?.active ? online.ownTeam ?? 0 : t.playerTeam;
     if (a.state.winner === 0 || a.state.winner === 1)
       announcer.say(a.state.winner === ownTeam ? "victory" : "defeat");
-    refreshScoreboard();
+    if (!online?.active) {
+      victory.show({
+        outcome: a.state.winner === ownTeam ? "victory" : a.state.winner === null ? "draw" : "defeat",
+        team: ownTeam, blueScore: a.state.blueScore, orangeScore: a.state.orangeScore,
+        stats: matchEvents.summary(), roster: offlineRoster(), teams: offlineTeams, selfSlot: 0,
+        note: "Casual match · No ratings or placements.",
+      });
+    } else refreshScoreboard();
   }
   // Hold TAB to peek at the scoreboard, Rocket League style.
   window.addEventListener("keydown", event => {
@@ -1237,6 +1261,13 @@ async function startGame() {
   },true);
   online = mountP2P(an, {
     sim: n, match: a, visual: () => i,
+    // Both team paints of the equipped car travel with the player so remote
+    // arenas paint this car with ITS OWNER's garage colors, never the viewer's.
+    paint: () => {
+      const trim = settings => ({ primary: settings.primary, pearl: settings.pearl, boostColor: settings.boostColor,
+        roughness: settings.roughness, metalness: settings.metalness, clearcoat: settings.clearcoat });
+      return { blue: trim(getCarCustomization(i, 'blue')), orange: trim(getCarCustomization(i, 'orange')) };
+    },
     modal: open => { ne = open; qe("online", open); },
     resume: () => st(), home: () => home.show(), closeHome: () => home.close(),
     bots: () => { ne = true; pe.show(); },
@@ -1244,6 +1275,7 @@ async function startGame() {
     onEvents: (events, stats, teams) => handleMatchEvents(events, stats, teams, online?.localRoster()),
     onStats: () => { if (tabHeld) refreshScoreboard(); },
     prepare: async (roster, order, valid, descriptor) => {
+      victory.hide();
       goalPresentation?.finish({ cancel: true }); v(); p = false;
       const ordered = order.map(index => roster[index]);
       await N.prepareOnlineRoster(ordered);
@@ -1275,6 +1307,15 @@ async function startGame() {
       scoreboardRows: () => document.querySelectorAll(".arena-scoreboard__player").length,
       stats: () => matchEvents.summary(),
       effectsActive: () => arenaEffects.active,
+      carPaints: () => N.cars.map(car => {
+        let paint = null;
+        car?.traverse?.(object => {
+          const materials = Array.isArray(object.material) ? object.material : [object.material];
+          for (const material of materials)
+            if (material?.userData?.fennecV2 && material.userData.garagePaint) paint = material.userData.garagePaint.primary;
+        });
+        return paint;
+      }),
       stadium: { set: setStadium, get: getStadium, accents: () => N.stadiumAccents?.children.length ?? 0 },
     }) });
   }

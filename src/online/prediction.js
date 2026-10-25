@@ -112,15 +112,20 @@ export class Prediction {
     agrees(history, state) {
         if (!history)
             return false;
+        // Tolerances sized for visible smoothness, not float purity: a 25 uu
+        // (25 cm) position gap is imperceptible on a 4096 uu-wide field, but
+        // forcing a restore+replay for it reads as rubber-banding. Real drift
+        // is still caught by the hidden-state comparison on checkpoints and
+        // by the loose tolerances on the next divergent snapshot.
         for (let slot = 0; slot < this.order.length; slot++) {
             const at = L.CARS + slot * STRIDE;
-            if (distance(history, state, at) > 2 || distance(history, state, at + 12) > 10 || distance(history, state, at + 3) > .015 || distance(history, state, at + 9) > .015)
+            if (distance(history, state, at) > 25 || distance(history, state, at + 12) > 45 || distance(history, state, at + 3) > .05 || distance(history, state, at + 9) > .05)
                 return false;
             for (const flag of [C.ON_GROUND, C.DEMOED, C.HAS_FLIP_OR_JUMP, C.IS_FLIPPING])
                 if (history[at + flag] !== state[at + flag])
                     return false;
         }
-        return distance(history, state, L.BALL) < 4 && distance(history, state, L.BALL + 12) < 15;
+        return distance(history, state, L.BALL) < 30 && distance(history, state, L.BALL + 12) < 60;
     }
     reconcile() {
         if (!this.queuedSnapshot)
@@ -207,10 +212,10 @@ export class Prediction {
         const updateStarted = performance.now();
         this.reconcile();
         // Keep driving the local car through brief transport hiccups (packet
-        // retransmissions and congestion-valve pauses): 750 ms of prediction
+        // retransmissions and congestion-valve pauses): 1000 ms of prediction
         // beats a frozen car. Beyond that the timeline is too stale to trust
         // and the freeze path takes over.
-        const playing = connected && now - this.lastReceive < 750 && this.latest.match.phase === 'playing';
+        const playing = connected && now - this.lastReceive < 1000 && this.latest.match.phase === 'playing';
         if (playing) {
             this.accumulator += Math.min(elapsed, 100) * this.rate;
             const due = Math.floor(this.accumulator / DT + 1e-9), count = Math.min(12, due);

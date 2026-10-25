@@ -5,9 +5,10 @@ export function mountHome(root, actions) {
   const panel = document.createElement('section');
   panel.className = 'arcade-home arena-home';
   panel.hidden = true;
-  panel.setAttribute('aria-label', 'Rocket Arena home');
+  panel.setAttribute('aria-label', 'Rocket League home');
   panel.innerHTML = `
-    <header class="arena-home__header"><img class="arena-home__logo" src="/assets/ui/rocket-arena-mark.webp" width="1254" height="1254" alt=""><div class="arcade-brand">ROCKET <span>ARENA</span></div></header>
+    <header class="arena-home__header"><img class="arena-home__logo" src="/assets/ui/rocket-arena-mark.webp" width="1254" height="1254" alt=""><div class="arcade-brand">ROCKET <span>LEAGUE</span></div></header>
+    <div class="arena-home__player" aria-label="Player card"><span class="arena-home__player-name" data-home-player>PLAYER</span><span class="arena-home__player-rank">CASUAL · ROOKIE</span></div>
     <div class="arena-home__navigation" data-home-page="main"><nav aria-label="Home menu">
       <button type="button" class="arena-home__choice is-play" data-home="play"><span class="play-key" aria-hidden="true">A</span><span class="play-copy"><strong>PLAY</strong><small>HIT THE FIELD</small></span></button>
       <button type="button" class="arena-home__choice" data-home="garage"><span>GARAGE</span></button>
@@ -30,6 +31,8 @@ export function mountHome(root, actions) {
   homeButton.setAttribute('aria-label', 'Open home screen');
   (root.querySelector('.hud-tools') ?? root).append(homeButton);
   root.append(panel);
+  // Player card mirrors the saved online display name, Rocket League style.
+  try { panel.querySelector('[data-home-player]').textContent = (localStorage.getItem('arena.p2p.name') || 'PLAYER').toUpperCase(); } catch {}
   let visible = false, dirty = true, drag = null, poll = 0, page = 'main';
   let lastDirection = 0, lastMove = 0, previousConfirm = false, previousCancel = false;
   const orbit = { yaw: 2.087180175781252, pitch: 0.08, distance: 1 };
@@ -60,7 +63,7 @@ export function mountHome(root, actions) {
       if (direction && (direction !== lastDirection || now - lastMove > 240)) { moveFocus(direction); lastMove = now; }
       lastDirection = direction;
       const confirm = !!pad.buttons[0]?.pressed, cancelPressed = !!pad.buttons[1]?.pressed;
-      if (confirm && !previousConfirm && panel.contains(document.activeElement)) document.activeElement.click();
+      if (confirm && !previousConfirm && document.activeElement instanceof Element && panel.contains(document.activeElement)) document.activeElement.click();
       if (cancelPressed && !previousCancel) cancel();
       previousConfirm = confirm; previousCancel = cancelPressed;
     } else { lastDirection = 0; previousConfirm = previousCancel = false; }
@@ -77,6 +80,7 @@ export function mountHome(root, actions) {
   function show() {
     if (visible) return;
     visible = true; dirty = true; panel.hidden = false; root.classList.add('home-open');
+    try { panel.querySelector('[data-home-player]').textContent = (localStorage.getItem('arena.p2p.name') || 'PLAYER').toUpperCase(); } catch {}
     actions.pause(true);
     setPage('main');
     const pad = Ks();

@@ -3,12 +3,12 @@
 // optional emissive accent meshes around the field and goals. The playable
 // collision arena is untouched, so gameplay stays identical everywhere.
 import { createSettingsStore, readChoice } from '../core/settings-store.js';
-import { Group, Mesh, MeshBasicMaterial, BoxGeometry, CylinderGeometry, AdditiveBlending, DoubleSide } from '../vendor/three.js';
+import { Group, Mesh, MeshBasicMaterial, BoxGeometry, CylinderGeometry, Ya as RingGeometry, AdditiveBlending, DoubleSide } from '../vendor/three.js';
 
 export const STADIUMS = Object.freeze([
   { id: 'park', name: 'Park Day', blurb: 'Alpine daylight — the original arena.' },
-  { id: 'neon', name: 'Neon Night', blurb: 'Floodlit night match with glowing rails.' },
-  { id: 'dusk', name: 'Golden Dusk', blurb: 'Golden hour, long warm shadows.' },
+  { id: 'neon', name: 'Neon Night', blurb: 'Night match: glowing goals, rails and center circle.' },
+  { id: 'dusk', name: 'Golden Dusk', blurb: 'Golden hour: amber frames and warm field glow.' },
 ]);
 
 const stadiumStore = createSettingsStore(
@@ -67,8 +67,13 @@ export function stadiumUniformOverlay(id) {
   return null;
 }
 
-// Emissive accent meshes for the non-default stadiums. Applied to the world
-// scene; call again with 'park' to strip them.
+// Emissive accent meshes for the non-default stadiums. This kit now reaches
+// INSIDE the arena, not just the exterior: team-colored goal frames at the
+// mouth of each goal, a glowing center circle with kickoff dot, light strips
+// along the interior wall bases, corner floor accents and a subtle full-field
+// color wash that regrades the turf per stadium. Applied to the world scene;
+// call again with 'park' to strip everything. The collision arena is untouched
+// so gameplay stays identical everywhere.
 export function applyStadiumAccents(scene, id, world) {
   if (world.stadiumAccents) {
     scene.remove(world.stadiumAccents);
@@ -98,6 +103,38 @@ export function applyStadiumAccents(scene, id, world) {
     group.add(ring);
     return ring;
   };
+  // Flat emissive ring on the floor (interior decals: center circle, corners).
+  const addFloorRing = (x, z, inner, outer, color, emissive = 1.5, opacity = 0.55) => {
+    const material = new MeshBasicMaterial({ color, toneMapped: false, transparent: true, opacity, blending: AdditiveBlending, depthWrite: false, side: DoubleSide });
+    material.color.multiplyScalar(emissive);
+    const ring = new Mesh(new RingGeometry(inner, outer, 64, 1), material);
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.set(x, 6, z);
+    group.add(ring);
+    return ring;
+  };
+  // Team-colored glowing frame around each goal mouth (interior).
+  const addGoalFrame = (z, color, emissive = 2.4) => {
+    const half = 893, height = 643, post = 36;
+    addBox(post, height + post, post, -half - post / 2, (height + post) / 2, z, color, emissive);
+    addBox(post, height + post, post, half + post / 2, (height + post) / 2, z, color, emissive);
+    addBox(half * 2 + post * 2, post, post, 0, height + post / 2, z, color, emissive);
+  };
+  // Interior wall-base light strips, just inside the boards.
+  const addWallStrips = (color, emissive = 1.4) => {
+    addBox(26, 22, 10200, -4080, 16, 0, color, emissive);
+    addBox(26, 22, 10200, 4080, 16, 0, color, emissive);
+    addBox(8160, 22, 26, 0, 16, -5094, color, emissive);
+    addBox(8160, 22, 26, 0, 16, 5094, color, emissive);
+  };
+  // Full-field color wash: regrades the turf without touching its shader.
+  const addFieldWash = (color, opacity = 0.1) => {
+    const material = new MeshBasicMaterial({ color, toneMapped: false, transparent: true, opacity, blending: AdditiveBlending, depthWrite: false });
+    const wash = new Mesh(new BoxGeometry(8180, 2, 10240), material);
+    wash.position.set(0, 5, 0);
+    group.add(wash);
+    return wash;
+  };
 
   if (id === 'neon') {
     // World coords: X across the field (±4096), Y up, Z along the field (±5120).
@@ -111,6 +148,15 @@ export function applyStadiumAccents(scene, id, world) {
     addRing(0, -5120, 1150, cyan, 2.1);
     addRing(0, 5120, 1150, 0xffa03c, 2.1);
     addRing(0, 0, 4400, cyan, 0.55);
+    // Interior kit.
+    addGoalFrame(-5120, cyan, 2.6);
+    addGoalFrame(5120, 0xffa03c, 2.6);
+    addFloorRing(0, 0, 1120, 1165, cyan, 1.7, 0.6);
+    addFloorRing(0, 0, 60, 110, 0xffffff, 1.9, 0.7);
+    addWallStrips(cyan, 1.5);
+    for (const x of [-4096, 4096]) for (const z of [-5120, 5120])
+      addFloorRing(x, z, 150, 210, magenta, 1.6, 0.5);
+    addFieldWash(0x0a2f5e, 0.12);
   } else if (id === 'dusk') {
     const amber = 0xffb347, ember = 0xff7038;
     addBox(8192, 24, 36, 0, 40, -5120, ember, 1.6);
@@ -119,6 +165,15 @@ export function applyStadiumAccents(scene, id, world) {
     addBox(36, 24, 10240, 4096, 40, 0, amber, 1.3);
     addRing(0, -5120, 1150, amber, 1.5);
     addRing(0, 5120, 1150, 0xff8c3c, 1.5);
+    // Interior kit.
+    addGoalFrame(-5120, 0x7ec8ff, 2.2);
+    addGoalFrame(5120, amber, 2.2);
+    addFloorRing(0, 0, 1120, 1165, amber, 1.5, 0.5);
+    addFloorRing(0, 0, 60, 110, 0xfff0c8, 1.6, 0.6);
+    addWallStrips(ember, 1.2);
+    for (const x of [-4096, 4096]) for (const z of [-5120, 5120])
+      addFloorRing(x, z, 150, 210, ember, 1.3, 0.45);
+    addFieldWash(0x3d1f07, 0.1);
   }
 
   scene.add(group);

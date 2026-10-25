@@ -29,7 +29,7 @@ export function mountOnline(root, hooks) {
   let lastSnapshotAt = 0, queueSent = false, poll = 0, oldButtons = [], lastDirection = 0;
   const panel = document.createElement('section'); panel.className = 'online-panel sheet-overlay'; panel.hidden = true;
   panel.innerHTML = `<div class="online-dialog" role="dialog" aria-modal="true" aria-labelledby="online-title">
-    <header class="online-heading"><div><p class="online-eyebrow">ROCKET ARENA · ONLINE BETA</p><h1 id="online-title">CASUAL</h1></div><button type="button" data-online="back" class="online-close" aria-label="Back to Play">×</button></header>
+    <header class="online-heading"><div><p class="online-eyebrow">ROCKET LEAGUE · ONLINE BETA</p><h1 id="online-title">CASUAL</h1></div><button type="button" data-online="back" class="online-close" aria-label="Back to Play">×</button></header>
     <p class="online-subtitle">Real players. One shared arena. No replacement bots.</p>
     <form class="online-form">
       <div class="online-playlists" role="group" aria-label="Online playlist">${[1, 2, 3].map(n => `<button type="button" data-size="${n}" aria-pressed="${n === 1}" class="online-playlist"><img src="/assets/online/team-${n}.webp" alt="" draggable="false"><strong>${n}v${n}</strong><small>${['DUEL', 'DOUBLES', 'STANDARD'][n - 1]}</small></button>`).join('')}</div>

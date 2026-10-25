@@ -13,6 +13,7 @@ import { Peer } from '../vendor/peerjs.mjs';
 import { HostRoom } from './p2p-room.js';
 import { Prediction } from './prediction.js';
 import { MatchEvents } from '../match/match-events.js';
+import { victoryContent } from '../ui/victory-screen.js';
 import { controlsArray, decodeSnapshot, validName, NEUTRAL, PROTOCOL, PHYSICS_SHA256 } from './protocol.js';
 import { NETWORK_CORE_SHA256 } from '../physics/network-core.js';
 import { Ks } from '../input/controller-selection.js';
@@ -24,6 +25,17 @@ const CONNECT_TIMEOUT = 15000;
 const READY_TIMEOUT = 150000;
 const PING_INTERVAL = 2000;
 const NAME_KEY = 'arena.p2p.name';
+// Mode-aware snapshot cadence (Hz). A 6-car relayed link cannot carry 60 Hz
+// snapshots; guests interpolate anyway, so lower cadence trades nothing the
+// player can see for a large drop in queueing delay.
+const SNAPSHOT_HZ_BY_MODE = { '1v1': 60, '2v2': 40, '3v3': 30 };
+// Congestion valve threshold (SCTP bufferedAmount). 8 KB tripped on ordinary
+// bursts and starved guests into prediction freezes; 32 KB only engages when
+// the link is genuinely falling minutes behind on team rosters.
+const CONGESTION_BYTES = 32768;
+// Paint fields that travel with each player so every car wears its owner's
+// garage colors instead of the viewer's local garage paint.
+const PAINT_KEYS = ['primary', 'pearl', 'boostColor', 'roughness', 'metalness', 'clearcoat'];
 // Message flow version: 2 = lobby + welcome-at-START (team rosters). Clients
 // with a different flow cannot understand each other's lobby messages.
 const FLOW = 2;
@@ -99,6 +111,26 @@ function balancedTeam(roster) {
   const orange = roster.filter(player => player.team === 1).length;
   return blue <= orange ? 0 : 1;
 }
+// {blue:{...},orange:{...}} with only the paint keys the arena applies;
+// anything malformed falls back to null (the arena then uses team defaults).
+function sanitizePaint(paint) {
+  if (!paint || typeof paint !== 'object') return null;
+  const clean = {};
+  for (const team of ['blue', 'orange']) {
+    const source = paint[team];
+    if (!source || typeof source !== 'object') continue;
+    const entry = {};
+    for (const key of PAINT_KEYS) {
+      if (key === 'boostColor' || key === 'primary' || key === 'pearl') {
+        if (typeof source[key] === 'string' && /^#[0-9a-f]{6}$/i.test(source[key])) entry[key] = source[key].toLowerCase();
+      } else if (typeof source[key] === 'number' && Number.isFinite(source[key])) {
+        entry[key] = Math.min(1, Math.max(0, source[key]));
+      }
+    }
+    if (entry.primary) clean[team] = entry;
+  }
+  return Object.keys(clean).length ? clean : null;
+}
 
 export function mountP2P(root, hooks) {
   let peer = null, room = null, prediction = null;
@@ -121,7 +153,7 @@ export function mountP2P(root, hooks) {
   panel.className = 'online-panel sheet-overlay';
   panel.hidden = true;
   panel.innerHTML = `<div class="online-dialog" role="dialog" aria-modal="true" aria-labelledby="p2p-title">
-    <header class="online-heading"><div><p class="online-eyebrow">ROCKET ARENA · PEER-TO-PEER</p><h1 id="p2p-title">MULTIPLAYER</h1></div><button type="button" data-p2p="back" class="online-close" aria-label="Back to Play">×</button></header>
+    <header class="online-heading"><div><p class="online-eyebrow">ROCKET LEAGUE · PEER-TO-PEER</p><h1 id="p2p-title">MULTIPLAYER</h1></div><button type="button" data-p2p="back" class="online-close" aria-label="Back to Play">×</button></header>
     <p class="online-subtitle">Direct matches over WebRTC — 1v1, 2v2 or 3v3. Share a five-letter room code — no account, no game server.</p>
     <form class="online-form">
       <div class="online-account-row"><label class="online-name">DISPLAY NAME<input name="displayName" autocomplete="nickname" minlength="2" maxlength="24" value="Player" required></label><div class="online-identity">Host plays Blue · Teams auto-balance</div></div>
@@ -166,7 +198,7 @@ export function mountP2P(root, hooks) {
       const buttons = pad.buttons.map(button => button.pressed);
       const direction = buttons[13] || buttons[15] || pad.axes[1] > 0.55 || pad.axes[0] > 0.55 ? 1 : buttons[12] || buttons[14] || pad.axes[1] < -0.55 || pad.axes[0] < -0.55 ? -1 : 0;
       if (direction && now - lastDirection > 220) { moveFocus(direction); lastDirection = now; }
-      if (buttons[0] && !oldButtons[0] && panel.contains(document.activeElement)) document.activeElement.click();
+      if (buttons[0] && !oldButtons[0] && document.activeElement instanceof Element && panel.contains(document.activeElement)) document.activeElement.click();
       if (buttons[1] && !oldButtons[1]) back();
       oldButtons = buttons;
     }
@@ -259,7 +291,7 @@ export function mountP2P(root, hooks) {
     if (!name) return;
     role = 'host'; roomReady = false; hostName = name; hostPrepared = false; starting = false;
     guests = new Map(); hostRtts = new Map();
-    roster = [{ id: 'host', name, team: 0, visual: hooks.visual() }];
+    roster = [{ id: 'host', name, team: 0, visual: hooks.visual(), paint: sanitizePaint(hooks.paint?.()) ?? null }];
     controls(); setStatus('Creating your room on the signaling server…');
     code = generateCode();
     peer = new Peer(ID_PREFIX + code, PEER_OPTIONS);
@@ -329,7 +361,8 @@ export function mountP2P(root, hooks) {
     entry.slot = slot;
     entry.name = message.name;
     entry.visual = typeof message.visual === 'string' ? message.visual : 'octane-original';
-    roster = [...roster, { id: 'guest' + slot, slot, name: entry.name, team: balancedTeam(roster), visual: entry.visual }];
+    entry.paint = sanitizePaint(message.paint);
+    roster = [...roster, { id: 'guest' + slot, slot, name: entry.name, team: balancedTeam(roster), visual: entry.visual, paint: entry.paint }];
     guests.set(slot, entry);
     setStatus(`${entry.name} joined (${roster.length}/${lobbyCapacity() + 1} players). Waiting for everyone to be ready.`);
     // Everyone already in the lobby hears about the new player.
@@ -446,11 +479,12 @@ export function mountP2P(root, hooks) {
       // moment it finishes because snapshots already flow to its slot.
       const channels = new Map([...guests.entries()].map(([slot, entry]) => [slot, {
         send: payload => sendPayload(entry.conn, payload),
-        congested: () => (entry.conn?.dataChannel?.bufferedAmount ?? 0) > 8192
+        congested: () => (entry.conn?.dataChannel?.bufferedAmount ?? 0) > CONGESTION_BYTES
       }]));
       room = new HostRoom({
         sim: hooks.sim, match: hooks.match, players: startRoster,
         guests: channels,
+        snapshotHz: SNAPSHOT_HZ_BY_MODE[mode] ?? 60,
         events: matchEvents,
         onEvent: event => {
           if (event.type === 'kickoff') hooks.kickoff?.();
@@ -530,7 +564,7 @@ export function mountP2P(root, hooks) {
       conn.on('open', () => {
         clearTimeout(connectTimeout);
         setStatus('Connected. Introducing your car…');
-        sendPayload(conn, { type: 'hello', protocol: PROTOCOL, physics: PHYSICS_SHA256, flow: FLOW, nativeCheckpoint: 1, name, visual: hooks.visual() });
+        sendPayload(conn, { type: 'hello', protocol: PROTOCOL, physics: PHYSICS_SHA256, flow: FLOW, nativeCheckpoint: 1, name, visual: hooks.visual(), paint: hooks.paint?.() ?? null });
       });
       conn.on('data', data => gate(() => { if (attempt === generation) onGuestData(data, attempt); }, data instanceof ArrayBuffer || ArrayBuffer.isView(data) || data?.type === 'pong'));
       conn.on('close', () => { if (attempt === generation) onHostLost(); });
@@ -708,41 +742,6 @@ export function mountP2P(root, hooks) {
     showResult(result);
   }
 
-  function statsTable(stats) {
-    if (!stats?.slots?.length) return null;
-    const table = document.createElement('table');
-    table.className = 'online-stats';
-    const head = document.createElement('tr');
-    for (const label of ['PLAYER', 'G', 'A', 'SV', 'SH', 'PTS']) {
-      const cell = document.createElement('th');
-      cell.textContent = label;
-      head.append(cell);
-    }
-    table.append(head);
-    const youSlot = role === 'host' ? 0 : selfSlot;
-    const slots = stats.slots.map((slot, index) => ({ ...slot, index }));
-    slots.sort((a, b) => (b.points ?? 0) - (a.points ?? 0) || (b.goals ?? 0) - (a.goals ?? 0));
-    for (const slot of slots) {
-      const row = document.createElement('tr');
-      row.className = (roster?.[role === 'host' ? slot.index : order[slot.index]]?.team ?? slot.index % 2) === 0 ? 'blue-team' : 'orange-team';
-      const rosterSlot = role === 'host' ? slot.index : order[slot.index];
-      const name = roster?.[rosterSlot]?.name ?? `PLAYER ${slot.index + 1}`;
-      const cells = [
-        `${name}${rosterSlot === youSlot ? ' · YOU' : ''}`,
-        String(slot.goals ?? 0), String(slot.assists ?? 0),
-        String((slot.saves ?? 0) + (slot.epicSaves ?? 0)), String(slot.shots ?? 0),
-        String(slot.points ?? 0),
-      ];
-      for (const text of cells) {
-        const cell = document.createElement('td');
-        cell.textContent = text;
-        row.append(cell);
-      }
-      table.append(row);
-    }
-    return table;
-  }
-
   function showResult(result) {
     lastResult = result;
     const own = role === 'host' ? 0 : selfSlot;
@@ -750,21 +749,29 @@ export function mountP2P(root, hooks) {
     const stats = role === 'guest' && result.stats ? remapStats(result.stats) : (result.stats ?? (role === 'host' ? matchEvents?.summary() ?? null : null));
     if (stats) matchStats = () => stats;
     const box = find('.online-results'); box.hidden = false; box.replaceChildren();
-    const title = document.createElement('h2');
-    title.textContent = result.status === 'cancelled'
-      ? (result.reason === 'opponent_left' || result.reason === 'opponent_stalled') ? 'OPPONENT LEFT · VICTORY'
-        : result.reason === 'host_left' ? 'HOST LEFT'
-        : 'NO CONTEST'
-      : result.winner === ownTeam ? 'VICTORY' : result.winner === null ? 'DRAW' : 'DEFEAT';
-    box.append(title);
-    const score = document.createElement('p');
-    score.textContent = result.status === 'cancelled' ? 'The match did not complete.' : `${result.blueScore} – ${result.orangeScore}`;
-    box.append(score);
-    const table = statsTable(stats);
-    if (table) box.append(table);
-    const note = document.createElement('p');
-    note.textContent = 'Peer-to-peer casual · No ratings, placements or penalties.';
-    box.append(note);
+    const template = document.createElement('div');
+    template.className = 'arena-victory__content';
+    const outcome = result.status === 'cancelled'
+      ? (result.reason === 'opponent_left' || result.reason === 'opponent_stalled') ? 'victory'
+        : result.reason === 'host_left' ? 'no-contest' : 'no-contest'
+      : result.winner === ownTeam ? 'victory' : result.winner === null ? 'draw' : 'defeat';
+    const localRoster = () => role === 'host'
+      ? (roster ?? []).map(player => ({ name: player.name, team: player.team, disconnected: !!player.disconnected }))
+      : order.map(wireSlot => {
+          const player = roster?.[wireSlot];
+          return { name: player?.name ?? `PLAYER ${wireSlot + 1}`, team: player?.team ?? (wireSlot % 2), disconnected: !!player?.disconnected };
+        });
+    template.innerHTML = victoryContent({
+      outcome, team: ownTeam,
+      blueScore: result.blueScore ?? 0, orangeScore: result.orangeScore ?? 0,
+      stats, roster: localRoster(), teams: localRoster().map(player => player.team), selfSlot: 0,
+      note: result.status === 'cancelled'
+        ? (result.reason === 'opponent_left' || result.reason === 'opponent_stalled') ? 'The other team left the match.'
+          : result.reason === 'host_left' ? 'The host disconnected before the match completed.' : 'The match did not complete.'
+        : 'Peer-to-peer casual · No ratings, placements or penalties.',
+    });
+    // The scoreboard tables already carry team styling; move them in as-is.
+    box.append(template);
     show(); controls();
     setStatus(result.status === 'cancelled' ? 'Match ended early.' : 'Match complete.');
   }
@@ -913,6 +920,9 @@ export function mountP2P(root, hooks) {
         room.setLocalControls(neutral ? NEUTRAL : controlsArray(controls));
         collectRemoteControls(room.guestSlots.map(slot => room.guestControlsArray(slot)));
         clock.update(now, () => {}, () => room.step());
+        // One snapshot per frame, newest state only: catch-up batches must not
+        // emit bursts of back-to-back packets into every guest's queue.
+        room.flushSnapshots();
         if (room.guestStalled(now)) room.finish(0, 'opponent_stalled');
         if (render) {
           updateHudFromMatch(hooks.match.state);
@@ -923,7 +933,7 @@ export function mountP2P(root, hooks) {
           }
         }
       } else if (prediction) {
-        const usable = conn?.open && now - lastSnapshotAt < 1000;
+        const usable = conn?.open && now - lastSnapshotAt < 1250;
         prediction.update(now, neutral ? NEUTRAL : controlsArray(controls),
           (seq, values, metadata) => {
             const message = { type: 'input', seq, epoch: metadata.epoch, controls: values };
@@ -932,7 +942,7 @@ export function mountP2P(root, hooks) {
             // ms later; the host drops duplicates by sequence number. Skipped
             // when the send queue is backed up — a duplicate is pure overhead.
             setTimeout(() => {
-              if ((conn?.dataChannel?.bufferedAmount ?? 0) < 32768) sendPayload(conn, message);
+              if ((conn?.dataChannel?.bufferedAmount ?? 0) < CONGESTION_BYTES) sendPayload(conn, message);
             }, 8);
           },
           clock, usable, { render });

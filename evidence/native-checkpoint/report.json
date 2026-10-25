@@ -1,0 +1,22 @@
+{
+  "synthetic": true,
+  "scope": "Native gameplay checkpoint and unchanged offline algorithms; not WAN or full Bullet rollback",
+  "checks": [
+    "2-car 1000-tick original/new state equality",
+    "4-car 1000-tick original/new state equality",
+    "6-car 1000-tick original/new state equality",
+    "Atomic validation and reversed player-slot restoration",
+    "Native boost pickup/cooldown/lock checkpoint roundtrip"
+  ],
+  "cases": [
+    {
+      "name": "Float32-pose-roundtrip",
+      "maxFieldError": 0.00006103515625
+    },
+    {
+      "name": "mid-jump-to-double-jump",
+      "checkpointMaxPositionError": 0.0001373291015625,
+      "poseOnlyMaxPositionError": 44.66156624448829
+    }
+  ]
+}

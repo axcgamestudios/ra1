@@ -24,7 +24,10 @@ export function mountPauseMenu(root, actions) {
     panel.hidden = true;
     root.classList.remove('pause-open');
     cancelAnimationFrame(poll); poll = 0;
-    if (panel.contains(document.activeElement)) document.activeElement.blur();
+    // document.activeElement is null when the document itself lost focus
+    // (tab switch, headless window) — contains(null) throws.
+    const active = document.activeElement;
+    if (active instanceof Element && panel.contains(active)) active.blur();
     actions.pause(false);
   }
   function choose(action) {
@@ -40,7 +43,8 @@ export function mountPauseMenu(root, actions) {
     if (direction && direction !== previousDirection) moveFocus(direction);
     previousDirection = direction;
     if (confirm && !previousConfirm) {
-      const button = panel.contains(document.activeElement) ? document.activeElement : buttons[0];
+      const active = document.activeElement;
+      const button = active instanceof Element && panel.contains(active) ? active : buttons[0];
       choose(button.dataset.pause);
     } else if (cancel && !previousCancel) choose('resume');
     previousConfirm = confirm; previousCancel = cancel;

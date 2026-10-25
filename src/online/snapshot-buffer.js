@@ -73,9 +73,10 @@ export class SnapshotBuffer {
         // Starved timeline: rather than freezing on the newest sample (the
         // classic stutter-step), dead-reckon a short distance along confirmed
         // velocities. Long gaps still clamp — never blindly extrapolate rigid
-        // bodies through walls.
+        // bodies through walls. The budget scales with the buffer delay so
+        // low-cadence (30 Hz team) streams keep moving through hiccups.
         if (this.playhead > newest.time) {
-            const overshoot = this.playhead - newest.time, budget = Math.min(75, 30 + this.delayMs / 2);
+            const overshoot = this.playhead - newest.time, budget = Math.min(110, 45 + this.delayMs / 2);
             if (overshoot <= budget) {
                 this.extrapolations++;
                 this.extrapolatedMs += overshoot;

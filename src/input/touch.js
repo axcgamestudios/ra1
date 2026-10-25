@@ -133,7 +133,9 @@ class TouchInput {
       window.addEventListener(
         "keydown",
         (n) => {
-          (this.root.contains(n.target) && Uf.has(n.code)) ||
+          // Synthetic/window-targeted events have a non-Node target; contains()
+          // would throw. Only real in-DOM targets can own touch shortcuts.
+          (n.target instanceof Node && this.root.contains(n.target) && Uf.has(n.code)) ||
             n.repeat ||
             this.hideForExternalInput();
         },

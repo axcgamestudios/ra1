@@ -1,5 +1,5 @@
 // Rocket League-style scoreboard: per-player goals, assists, saves, shots and
-// points. Shown automatically on goals and full time; hold TAB to peek.
+// points in a dark glass panel with team rails. Manual only — hold TAB.
 export function createScoreboard(root) {
   const element = document.createElement('section');
   element.className = 'arena-scoreboard';
@@ -8,15 +8,22 @@ export function createScoreboard(root) {
   element.innerHTML = `
     <div class="arena-scoreboard__panel">
       <header class="arena-scoreboard__head">
-        <span class="arena-scoreboard__score" data-board="blue-score">0</span>
-        <span class="arena-scoreboard__clock" data-board="clock">5:00</span>
-        <span class="arena-scoreboard__score" data-board="orange-score">0</span>
+        <div class="arena-scoreboard__team-score arena-scoreboard__team-score--blue">
+          <b data-board="blue-score">0</b><span>BLUE</span>
+        </div>
+        <div class="arena-scoreboard__clockwrap">
+          <span class="arena-scoreboard__clock" data-board="clock">5:00</span>
+          <span class="arena-scoreboard__label">MATCH</span>
+        </div>
+        <div class="arena-scoreboard__team-score arena-scoreboard__team-score--orange">
+          <b data-board="orange-score">0</b><span>ORANGE</span>
+        </div>
       </header>
       <div class="arena-scoreboard__columns">
         <table class="arena-scoreboard__team arena-scoreboard__team--blue" data-board="blue-rows"></table>
         <table class="arena-scoreboard__team arena-scoreboard__team--orange" data-board="orange-rows"></table>
       </div>
-      <footer class="arena-scoreboard__hint">Hold TAB to view · G goals · A assists · SV saves · SH shots · PTS points</footer>
+      <footer class="arena-scoreboard__hint">HOLD TAB · G GOALS · A ASSISTS · SV SAVES · SH SHOTS · PTS</footer>
     </div>`;
   (root ?? document.body).append(element);
   const find = name => element.querySelector(`[data-board="${name}"]`);

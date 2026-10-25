@@ -3,16 +3,27 @@
 #app .arcade-home.arena-home { position:absolute; inset:0; display:block; padding:clamp(20px,3.2vw,58px); overflow:hidden; background:transparent; border:0; box-shadow:none; cursor:grab; touch-action:none; user-select:none; color:#fff; font-family:"Arial Narrow","Roboto Condensed",Arial,sans-serif; }
 #app .arena-home [hidden], #app .arena-home[hidden] { display:none!important; }
 #app .arena-home.is-orbiting { cursor:grabbing; }
+/* Rocket League wordmark: white ROCKET over a warm metallic LEAGUE with glow. */
+.arena-home .arcade-brand > span { background:linear-gradient(180deg,#ffe2a6,#ff9d3d); -webkit-background-clip:text; background-clip:text; color:transparent; filter:drop-shadow(0 2px 8px #ff8c3659); }
+/* Player card, top-right, RL style. */
+.arena-home__player { position:absolute; z-index:2; top:clamp(14px,2.8vh,32px); right:clamp(22px,3.2vw,58px); display:grid; gap:3px; text-align:right; padding:10px 16px;
+  background:linear-gradient(100deg,#0b2c4bd9,#04131fcc); border:1px solid #2c5a7a; border-radius:8px;
+  clip-path:polygon(8% 0,100% 0,100% 100%,0 100%); pointer-events:none; }
+.arena-home__player-name { font:900 clamp(13px,1.2vw,17px)/1 "Arial Narrow",Arial,sans-serif; letter-spacing:.06em; color:#eaf6ff; }
+.arena-home__player-rank { font:700 9px/1 Archivo,Arial,sans-serif; letter-spacing:.24em; color:#7fb2cc; }
 .arena-home__header { position:absolute; z-index:2; top:clamp(14px,2.8vh,32px); left:clamp(22px,3.2vw,58px); display:flex; flex-direction:column; align-items:flex-start; gap:0; transform:none; pointer-events:none; }
 .arena-home__logo { width:clamp(70px,8vw,112px); height:auto; margin-bottom:-8px; object-fit:contain; filter:drop-shadow(0 6px 10px #001127aa); }
 .arena-home .arcade-brand { white-space:nowrap; font-size:clamp(22px,2.3vw,32px); font-style:italic; text-shadow:0 1px 2px #081422; }
-.arena-home .arcade-brand > span { color:#d8f3ff; }
 .arena-home__navigation { position:absolute; left:clamp(22px,3.2vw,58px); top:50%; transform:translateY(-55%); width:clamp(290px,34vw,520px); cursor:default; }
 #app .arena-home nav { display:flex; flex-direction:column; gap:clamp(5px,.5vw,8px); }
 #app .arena-home__choice { position:relative; isolation:isolate; display:block; width:100%; min-height:0; height:clamp(48px,5.2vw,76px); border:0; padding:0 clamp(26px,2.4vw,38px); color:#fff; text-align:left; cursor:pointer; overflow:hidden; clip-path:polygon(4% 0,100% 0,calc(100% - 20px) 100%,0 100%); background:linear-gradient(100deg,#0a3a66,#031b33 88%); border-radius:0; box-shadow:none; transform:none; font:italic 900 clamp(20px,1.6vw,31px)/1 "Arial Narrow",Arial,sans-serif; letter-spacing:.02em; transition:transform 160ms ease,background 160ms ease; }
+/* RL accent rail: brightens and slides out on hover/focus. */
+#app .arena-home__choice::before { content:""; position:absolute; inset:0 auto 0 0; width:6px; background:linear-gradient(180deg,#7fe4ff,#1f8fd6); opacity:.75; transition:width 160ms ease,opacity 160ms ease; }
+#app .arena-home__choice:is(:hover,:focus-visible)::before { width:12px; opacity:1; }
 .arena-home__choice > span { transform:none; }
-#app .arena-home__choice:is(:hover,:focus-visible) { outline:none; color:white; background:#075f9b; transform:translateX(10px); }
+#app .arena-home__choice:is(:hover,:focus-visible) { outline:none; color:white; background:linear-gradient(100deg,#0d5a9c,#06294d 88%); transform:translateX(10px); box-shadow:0 6px 26px #07afff33; }
 #app .arena-home__choice.is-play { height:clamp(64px,6.5vw,94px); padding-left:clamp(78px,7vw,108px); color:#06498b; background:#c5edff url('/assets/menu/play-illustration.webp') right 5% center/46% auto no-repeat; }
+#app .arena-home__choice.is-play::before { background:linear-gradient(180deg,#ffd58a,#ff9d3d); }
 #app .arena-home__choice.is-play:is(:hover,:focus-visible) { outline:none; background-color:#e0f7ff; }
 .arena-home .play-key { position:absolute; left:clamp(25px,2.4vw,36px); top:50%; transform:translateY(-50%); width:clamp(38px,3.4vw,50px); aspect-ratio:1; display:grid; place-items:center; border-radius:50%; background:#0664c8; color:white; font-size:clamp(22px,2vw,30px); font-weight:900; font-style:normal; }
 .arena-home .play-copy { display:flex; flex-direction:column; justify-content:center; height:100%; }
@@ -32,6 +43,6 @@
 #app .arena-home .arena-play__actions { position:absolute; left:clamp(22px,3.2vw,58px); bottom:clamp(108px,16vh,155px); display:flex; flex-direction:row; gap:5px; }
 #app .arena-play__actions button { width:clamp(125px,11vw,183px); height:39px; padding:0; border:0; border-radius:0; clip-path:polygon(4% 0,100% 0,96% 100%,0 100%); background:#000c; color:white; font:italic 400 16px Arial,sans-serif; cursor:pointer; }
 #app .arena-play__actions button:is(:hover,:focus-visible) { outline:none; background:#09668a; color:#cefbff; }
-@media(max-width:720px) { .arena-home__navigation { width:min(70vw,360px); } .arena-play__grid { left:5%;right:5%;top:24%;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px; } .arena-mode > span { padding:15px 10px 10px; } .arena-mode small { font-size:10px; } }
+@media(max-width:720px) { .arena-home__navigation { width:min(70vw,360px); } .arena-home__player { padding:8px 12px; } .arena-play__grid { left:5%;right:5%;top:24%;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px; } .arena-mode > span { padding:15px 10px 10px; } .arena-mode small { font-size:10px; } }
 @media(max-height:570px) { .arena-home__navigation { top:49%;width:clamp(240px,30vw,390px); } #app .arena-home__choice { height:36px;font-size:19px; } #app .arena-home__choice.is-play { height:52px; } .arena-home .play-copy strong { font-size:23px; } .arena-home .play-copy small { font-size:10px; } .arena-home .play-key { width:32px;font-size:21px; } .arena-play__grid { left:12%;right:12%;top:28%;grid-template-columns:repeat(3,minmax(0,1fr)); } #app .arena-home .arena-play__actions { left:auto;right:20px;bottom:18px; } .arena-mode small { font-size:10px; } }
 @media(prefers-reduced-motion:reduce) { #app .arena-home button { transition:none; } }

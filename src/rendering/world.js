@@ -1,6 +1,6 @@
 import { PARK_ART, updateParkSceneryDetail } from "../arena/park.js";
 import { createReferenceBoostPadBatch, updateReferenceBoostPad } from '../arena/reference-boost-pads.js';
-import { applyCarCustomization } from '../vehicles/customization.js';
+import { applyCarCustomization, applyCarCustomizationSettings, remoteCarPaint } from '../vehicles/customization.js';
 import { applyNativeHitbox, createNativeWheelDiagnostics, disposeNativeWheelDiagnostics, updateNativeWheelDiagnostics } from "../physics/geometry.js";
 import { _ } from "../core/class-fields.js";
 import { Ct, Ed, Ee, F, Gi, It, Ke, Ne, Nm, Tn, Wa, Xt, Ya, cn, dt, e0, el, eo, jn, lt, zi } from "../vendor/three.js";
@@ -261,6 +261,16 @@ class GameWorld {
       this.opponentCarAssets.set(player.visual, asset);
       this.addCar(player.team, player.visual, asset);
     }
+    // Every REMOTE car wears its OWNER's paint (sent in the roster), not the
+    // local garage paint — that was the team-color bug: addCar() above reads
+    // this browser's customization store for every car it builds.
+    for (let index = 1; index < roster.length; index++) {
+      const player = roster[index], car = this.cars[index];
+      if (!car) continue;
+      const settings = remoteCarPaint(player, player.team);
+      applyCarCustomizationSettings(car, settings);
+      for (const boost of this.carBoosts[index] ?? []) boost.setColor(settings.boostColor);
+    }
     await Promise.all(this.carBoosts.flatMap(boosts => boosts.map(boost => boost.preload())));
     this.markRenderTreeChanged();
   }
@@ -293,7 +303,17 @@ class GameWorld {
         (A = [o.boostOutlet]));
     } else {
       if (custom) {
-        n.add(custom.body.clone(true));
+        // Object3D.clone(true) SHARES material instances with the asset
+        // template (and therefore with every other car built from it). Paint
+        // written through one car's materials recolored them all — the
+        // "every car wears my garage color" bug. Clone the materials so each
+        // car owns its uniforms; textures stay shared.
+        const body = custom.body.clone(true);
+        body.traverse(object => {
+          if (Array.isArray(object.material)) object.material = object.material.map(material => material?.clone());
+          else if (object.material) object.material = object.material.clone();
+        });
+        n.add(body);
       } else if (a) {
         if (!this.flatCarAsset)
           throw new Error("Flat Car asset was not loaded");
@@ -321,7 +341,13 @@ class GameWorld {
       const y = new dt();
       let C;
       (custom
-        ? (C = custom.wheels[u].clone(true))
+        ? ((C = custom.wheels[u].clone(true)),
+          // Same shared-material fix as the body: each car owns its wheel
+          // materials so per-owner paint never bleeds across cars.
+          C.traverse(object => {
+            if (Array.isArray(object.material)) object.material = object.material.map(material => material?.clone());
+            else if (object.material) object.material = object.material.clone();
+          }))
         : s
         ? (m.add(vg(o.suspension[u].innerZ - v)),
           (C = gg(g, Wd, {

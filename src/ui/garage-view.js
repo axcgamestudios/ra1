@@ -4,6 +4,10 @@ import { Vt } from './icons.js';
 
 export const garageCategories = [{ id: 'body', label: 'Body' }, { id: 'paint', label: 'Paint finish' }, { id: 'boost', label: 'Rocket boost' }];
 const swatches = ['#00bacb', '#0039f7', '#ff9910', '#ff05b9', '#ff3333', '#9d4cff', '#eeeeee', '#252936'];
+const teamTabs = `<div class="garage-team-tabs" role="tablist" aria-label="Team customization">
+  <button type="button" role="tab" data-garage-team-tab="blue">BLUE TEAM</button>
+  <button type="button" role="tab" data-garage-team-tab="orange">ORANGE TEAM</button>
+</div>`;
 
 export function garageMarkup() { return `
   <button id="car-button" class="car-tab" type="button" aria-label="Open garage" aria-haspopup="dialog">
@@ -30,6 +34,7 @@ export function garageMarkup() { return `
             </div>
             <div id="garage-panel-paint" role="tabpanel" aria-labelledby="garage-tab-paint" data-garage-panel="paint" hidden>
               <div class="garage-paint-preview" aria-hidden="true"><span></span><span></span><strong>LIVE TEAM PAINT</strong></div>
+              ${teamTabs}
               <div class="garage-color-grid">
                 <label class="garage-color-row">Primary color<input type="color" data-paint-color="primary" aria-label="Primary car color"></label>
                 <label class="garage-color-row">Pearl color<input type="color" data-paint-color="pearl" aria-label="Pearl car color"></label>
@@ -41,6 +46,7 @@ export function garageMarkup() { return `
             </div>
             <div id="garage-panel-boost" role="tabpanel" aria-labelledby="garage-tab-boost" data-garage-panel="boost" hidden>
               <div class="garage-boost-sample" aria-hidden="true"><span></span></div><h3 class="garage-section-label">ROCKET BOOST</h3>
+              ${teamTabs}
               <label class="garage-color-row">Boost color<input type="color" data-paint-color="boostColor" aria-label="Boost color"></label>
               <button class="metal-button garage-reset-boost" type="button" data-reset-boost>Original golden boost</button>
               <p class="garage-note">Colors the flame, trail, exhaust and nozzle glow for this car and team.</p>
