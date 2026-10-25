@@ -1036,6 +1036,10 @@ async function startGame() {
         if (online?.active) arenaEffects.goal(N.ball.position.clone(), goalExplosionSpec(event.team));
       } else if (event.kind === "nice_shot") {
         setTimeout(() => announcer.say("nice-shot", { team: event.team }), 550);
+      } else if (event.kind === "shot") {
+        announcer.say("shot-on-goal", { team: event.team });
+      } else if (event.kind === "demolition") {
+        announcer.say("demolition", { team: event.team });
       } else if (event.kind === "great_pass") {
         setTimeout(() => announcer.say("great-pass", { team: event.team }), 1050);
       } else if (event.kind === "what_a_play") {

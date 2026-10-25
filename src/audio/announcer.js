@@ -7,10 +7,12 @@ const CLIP_PATH = '/assets/audio/announcer/';
 const CLIPS = Object.freeze({
   goal: { file: 'goal.mp3', text: 'GOAL!', banner: 'GOAL!', team: true },
   'nice-shot': { file: 'nice-shot.mp3', text: 'Nice shot!', banner: 'NICE SHOT!' },
+  'shot-on-goal': { file: 'shot-on-goal.mp3', text: 'Shot on goal!', banner: 'SHOT ON GOAL!' },
   'what-a-save': { file: 'what-a-save.mp3', text: 'What a save!', banner: 'WHAT A SAVE!' },
   'epic-save': { file: 'epic-save.mp3', text: 'Epic save!', banner: 'EPIC SAVE!' },
   'great-pass': { file: 'great-pass.mp3', text: 'Great pass!', banner: 'GREAT PASS!' },
   'what-a-play': { file: 'what-a-play.mp3', text: 'What a play!', banner: 'WHAT A PLAY!' },
+  demolition: { file: 'demolition.mp3', text: 'Demolition!', banner: 'DEMOLITION!' },
   victory: { file: 'victory.mp3', text: 'Victory!', banner: 'VICTORY!' },
   defeat: { file: 'defeat.mp3', text: 'Defeat.', banner: 'DEFEAT' },
 });
