@@ -139,6 +139,9 @@ export function scoreboardData(summary, roster, teams, { selfSlot = null, blueSc
       name: roster?.[slot]?.name ?? (slot === 0 ? 'YOU' : `PLAYER ${slot + 1}`),
       goals: stats.goals ?? 0, assists: stats.assists ?? 0, saves: stats.saves ?? 0,
       epicSaves: stats.epicSaves ?? 0, shots: stats.shots ?? 0, points: stats.points ?? 0,
+      // Extra flavor stats for the winner-screen nameplates (ignored by the
+      // scoreboard tables themselves).
+      demolitions: stats.demolitions ?? 0, ownGoals: stats.ownGoals ?? 0,
       you: selfSlot === null ? slot === 0 : slot === selfSlot,
       left: !!roster?.[slot]?.disconnected,
     };

@@ -3,6 +3,7 @@ import { BufferGeometry, Float32BufferAttribute, Mesh, ShaderMaterial, AdditiveB
 export const ROCKET_PLUME_VERTEX = `
 uniform float time;
 uniform float opacity;
+uniform float stretch;
 varying vec2 vUv;
 varying vec3 vNormal,vView;
 void main(){
@@ -10,8 +11,12 @@ void main(){
   float t=uv.y;
   vec3 p=position;
   float pulse=1.+.025*sin(time*21.)+.018*sin(time*37.);
-  p.x*=mix(.38,1.,opacity)*pulse;
-  p.y+=sin(t*14.-time*25.)*.65*t*t;
+  // Speed stretch: near supersonic the flame jet lengthens dramatically
+  // (the promo-art silhouette of a boosting car mid-air).
+  p.x*=mix(.38,1.,opacity)*pulse*(1.+.14*stretch);
+  p.z*=mix(.38,1.,opacity)*pulse*(1.+.14*stretch);
+  p.y*=mix(1.,1.42,stretch);
+  p.y+=sin(t*14.-time*25.)*.65*t*t*(1.+.45*stretch);
   p.z+=sin(t*11.-time*19.+1.7)*.45*t*t;
   vNormal=normalize(mat3(modelMatrix)*normal);
   vView=cameraPosition-(modelMatrix*vec4(p,1.)).xyz;
@@ -58,7 +63,7 @@ function plumeGeometry(radius,length){
 }
 export function createRocketPlume(){
   return [[7.2,72,0],[3.6,48,1]].map(([radius,length,core])=>{
-    const material=new ShaderMaterial({name:core?'Boost / hot core':'Boost / flowing jet',uniforms:{time:{value:0},opacity:{value:0},coreLayer:{value:core}},vertexShader:ROCKET_PLUME_VERTEX,fragmentShader:ROCKET_PLUME_FRAGMENT,transparent:true,blending:AdditiveBlending,depthWrite:false,side:DoubleSide,toneMapped:true,forceSinglePass:true});
+    const material=new ShaderMaterial({name:core?'Boost / hot core':'Boost / flowing jet',uniforms:{time:{value:0},opacity:{value:0},stretch:{value:0},coreLayer:{value:core}},vertexShader:ROCKET_PLUME_VERTEX,fragmentShader:ROCKET_PLUME_FRAGMENT,transparent:true,blending:AdditiveBlending,depthWrite:false,side:DoubleSide,toneMapped:true,forceSinglePass:true});
     const mesh=new Mesh(plumeGeometry(radius,length),material);mesh.frustumCulled=false;return mesh;
   });
 }

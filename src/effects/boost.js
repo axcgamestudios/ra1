@@ -71,6 +71,9 @@ class BoostEffect {
     _(this, "spawnRemainder", 0);
     _(this, "elapsed", 0);
     _(this, "coneOpacity", 0);
+    _(this, "plumeStretch", 0);
+    _(this, "lastNozzleWorld", new F());
+    _(this, "hasLastNozzleWorld", !1);
     ((this.car = t),
       (this.nozzleLocal = n.clone()),
       (this.audio = r ? new BoostAudio(s) : null),
@@ -151,13 +154,27 @@ class BoostEffect {
     const l = a ? 28 : 16;
     ((this.coneOpacity = Gt.damp(this.coneOpacity, a ? 1 : 0, l, r)),
       (this.cone.visible = this.coneOpacity > 0.002));
+    // Speed-driven flame stretch: nozzle movement per second stretches the
+    // plume up to +42% near supersonic — the promo-art long flame jets.
+    if (n && r > 1e-4) {
+      this.car.updateWorldMatrix(!0, !1);
+      _s.copy(this.nozzleLocal);
+      this.car.localToWorld(_s);
+      if (this.hasLastNozzleWorld) {
+        const speed = _s.distanceTo(this.lastNozzleWorld) / r;
+        this.plumeStretch = Gt.damp(this.plumeStretch, Math.min(1, speed / 2300), 4, r);
+      }
+      (this.hasLastNozzleWorld = !0), this.lastNozzleWorld.copy(_s);
+    } else this.hasLastNozzleWorld = !1;
+    const flameBoost = 1 + 0.35 * this.plumeStretch;
     for (const c of this.coneMaterials)
       ((c.uniforms.time.value = this.elapsed),
-        (c.uniforms.opacity.value = this.coneOpacity));
+        (c.uniforms.opacity.value = this.coneOpacity),
+        c.uniforms.stretch && (c.uniforms.stretch.value = this.plumeStretch));
     ((this.nozzleFlash.visible = this.cone.visible),
-      (this.nozzleFlash.material.uniforms.intensity.value = this.coneOpacity),
+      (this.nozzleFlash.material.uniforms.intensity.value = this.coneOpacity * flameBoost),
       (this.light.intensity =
-        this.coneOpacity * (380 + 25 * Math.sin(this.elapsed * 24))),
+        this.coneOpacity * flameBoost * (380 + 25 * Math.sin(this.elapsed * 24))),
       o ? this.spawnDrive(r) : (this.driveSpawnAccumulator = 0),
       a
         ? (this.car.updateMatrixWorld(),
@@ -182,6 +199,8 @@ class BoostEffect {
       this.drive.markDirty(),
       this.trail.markDirty(),
       (this.coneOpacity = 0),
+      (this.plumeStretch = 0),
+      (this.hasLastNozzleWorld = !1),
       (this.cone.visible = this.nozzleFlash.visible = !1),
       (this.drive.mesh.visible = this.trail.mesh.visible = !1),
       (this.driveParticlesActive = this.trailParticlesActive = !1),

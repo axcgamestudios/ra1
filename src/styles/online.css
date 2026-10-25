@@ -224,22 +224,76 @@
 }
 
 /* ------------------------------------------------- victory / result screen ---- */
+/* Copied from the reference winner-screen video: WINNER caption, huge glowing
+   team word with bevel, MVP line, angled nameplates, drifting confetti. */
 #app .arena-victory { position:fixed;inset:0;z-index:150;display:flex;align-items:center;justify-content:center;
   background:#04101cd9;pointer-events:auto; }
 #app .arena-victory[hidden] { display:none; }
-#app .arena-victory__panel { width:min(900px,94vw);max-height:calc(100dvh - 40px);overflow:auto;text-align:center;
+#app .arena-victory__panel { position:relative;width:min(940px,94vw);max-height:calc(100dvh - 40px);overflow:auto;text-align:center;
   background:linear-gradient(180deg,#071e33f5,#02101cf5);border:1px solid #2c5a7a;border-radius:16px;
   box-shadow:0 28px 90px #000d;padding:26px 26px 20px;backdrop-filter:blur(8px); }
-#app .arena-victory__banner { font:900 clamp(44px,9vw,110px)/1 "Lilita One",var(--rl-font,Archivo,sans-serif);
-  letter-spacing:.02em;margin:2px 0 8px; }
-#app .arena-victory__banner[data-outcome="victory"] { color:#fff;text-shadow:0 0 34px #37b6ff99,0 5px 0 #0a2c47,0 14px 40px #0009; }
-#app .arena-victory__banner[data-outcome="victory"][data-team="orange"] { text-shadow:0 0 34px #ff943399,0 5px 0 #47230a,0 14px 40px #0009; }
-#app .arena-victory__banner[data-outcome="defeat"] { color:#9fb6c6;text-shadow:0 5px 0 #0a2233,0 14px 40px #0009; }
-#app .arena-victory__banner[data-outcome="draw"],#app .arena-victory__banner[data-outcome="no-contest"] { color:#d7e6f0;text-shadow:0 5px 0 #0a2233,0 14px 40px #0009; }
-#app .arena-victory__banner::after { content:"";display:block;height:6px;margin:10px auto 0;width:min(420px,70%);
-  border-radius:99px;background:linear-gradient(90deg,transparent,#3ea6ff 30%,#ff9a3d 70%,transparent); }
-#app .arena-victory__banner[data-outcome="victory"] { animation:victory-pop .55s cubic-bezier(.2,1.6,.35,1) both; }
+#app .arena-victory__banner { display:grid;justify-items:center;gap:6px;margin:2px 0 8px;
+  animation:victory-pop .55s cubic-bezier(.2,1.6,.35,1) both; }
 @keyframes victory-pop { 0% { opacity:0;transform:scale(.55); } 100% { opacity:1;transform:scale(1); } }
+#app .arena-victory__caption { font:800 clamp(13px,2.2vw,19px)/1 Archivo,sans-serif;letter-spacing:.52em;text-indent:.52em;
+  color:#f4fbff;text-transform:uppercase;text-shadow:0 2px 12px #000b; }
+#app .arena-victory__word { font:italic 900 clamp(58px,10vw,124px)/0.95 "Lilita One",var(--rl-font,Archivo,sans-serif);
+  letter-spacing:.01em;text-transform:uppercase; }
+#app .arena-victory__word { color:#9fe4ff;
+  text-shadow:0 0 26px #37b6ffb3,0 0 60px #37b6ff73,0 6px 0 #0a2c47,0 16px 44px #000a;
+  animation:victory-glow 2.6s ease-in-out infinite; }
+#app .arena-victory__banner[data-team="orange"] .arena-victory__word { color:#ffcf96;
+  text-shadow:0 0 26px #ff9433b3,0 0 60px #ff943373,0 6px 0 #47230a,0 16px 44px #000a; }
+#app .arena-victory__banner[data-outcome="draw"] .arena-victory__word,
+#app .arena-victory__banner[data-outcome="no-contest"] .arena-victory__word { color:#d7e6f0;
+  text-shadow:0 0 22px #9fc6dc66,0 5px 0 #0a2233,0 14px 40px #0009; animation:none; }
+@keyframes victory-glow { 0%,100% { filter:brightness(1); } 50% { filter:brightness(1.22); } }
+#app .arena-victory__mvp { display:inline-flex;align-items:center;gap:8px;margin-top:10px;
+  font:800 clamp(11px,1.8vw,15px)/1 Archivo,sans-serif;letter-spacing:.3em;text-indent:.3em;color:#ffd98a;
+  text-transform:uppercase;text-shadow:0 0 18px #ffb34066,0 2px 8px #000a; }
+#app .arena-victory__mvp:before { content:"★";font-size:.9em;text-indent:0; }
+#app .arena-victory__chip { display:inline-block;margin:-2px auto 6px;padding:5px 18px;
+  border:1px solid #6f8ea2;border-radius:999px;background:#122b3cd9;
+  font:800 11px/1 Archivo,sans-serif;letter-spacing:.34em;text-indent:.34em;color:#c7d9e4;text-transform:uppercase; }
+/* Angled nameplates (parallelogram, silver-framed avatar, two title lines). */
+#app .arena-victory__podium { display:flex;flex-wrap:wrap;justify-content:center;gap:14px;margin:14px 0 6px; }
+#app .arena-victory__plate { position:relative;display:flex;align-items:center;gap:12px;min-width:240px;
+  padding:10px 30px 10px 12px;background:#0b2b47e6;border:1px solid #2c5a7a;border-radius:3px;
+  clip-path:polygon(0 0,100% 0,calc(100% - 22px) 100%,0 100%);
+  transform:skewX(-8deg);box-shadow:0 14px 34px #000a; }
+#app .arena-victory__plate > * { transform:skewX(8deg); }
+#app .arena-victory__plate.is-mvp { background:linear-gradient(180deg,#123f66f2,#0a2b4df2);
+  border-color:#6fd7f2;box-shadow:0 0 26px #37b6ff59,0 14px 34px #000a; }
+#app .arena-victory__plate[data-team="orange"] { background:#3a2410e6;border-color:#7a4c22; }
+#app .arena-victory__plate.is-mvp[data-team="orange"] { background:linear-gradient(180deg,#4a2c10f2,#33200af2);
+  border-color:#ffb36b;box-shadow:0 0 26px #ff943359,0 14px 34px #000a; }
+#app .arena-victory__plate-avatar { display:grid;place-items:center;width:42px;height:42px;flex:none;
+  border-radius:6px;border:2px solid #cfe8ff9e;background:linear-gradient(160deg,#2f9dff,#0b4b8f);
+  color:#fff;font:900 19px/1 var(--sans);text-shadow:0 2px 6px #0008; }
+#app .arena-victory__plate[data-team="orange"] .arena-victory__plate-avatar { background:linear-gradient(160deg,#ff9a3d,#8a4a10); }
+#app .arena-victory__plate-info { display:grid;gap:3px;text-align:left; }
+#app .arena-victory__plate-info b { color:#f4fbff;font:800 15px/1 var(--sans);letter-spacing:.03em; }
+#app .arena-victory__plate-line { display:flex;gap:8px;align-items:baseline; }
+#app .arena-victory__plate-line i { font:800 9px/1 Archivo,sans-serif;font-style:normal;letter-spacing:.16em;
+  color:#8fd8ff;text-transform:uppercase; }
+#app .arena-victory__plate[data-team="orange"] .arena-victory__plate-line i { color:#ffc38a; }
+#app .arena-victory__plate-line em { font:700 11px/1 var(--sans);font-style:normal;color:#dcecf5; }
+#app .arena-victory__plate-mvp { position:absolute;top:-9px;right:8px;padding:3px 10px;border-radius:3px;
+  background:linear-gradient(180deg,#ffe2a3,#f5a83c);color:#3a2306;
+  font:900 9px/1 Archivo,sans-serif;letter-spacing:.22em;text-transform:uppercase;
+  box-shadow:0 3px 10px #000a; }
+/* Team-color confetti drifting down behind the podium. */
+#app .arena-victory__confetti { position:absolute;inset:0;overflow:hidden;border-radius:16px;pointer-events:none; }
+#app .arena-victory__confetti i { position:absolute;top:-12px;left:var(--left);width:var(--size);height:calc(var(--size)*.6);
+  background:#6fd7f2;opacity:0;border-radius:1px;
+  animation:victory-confetti var(--duration) linear var(--delay) infinite; }
+#app .arena-victory__confetti[data-team="orange"] i { background:#ffb36b; }
+@keyframes victory-confetti {
+  0% { transform:translate3d(0,-12px,0) rotate(0deg); opacity:0; }
+  8% { opacity:.85; }
+  85% { opacity:.6; }
+  100% { transform:translate3d(14px,460px,0) rotate(240deg); opacity:0; }
+}
 #app .arena-victory__score { display:flex;align-items:center;justify-content:center;gap:clamp(18px,4vw,54px);margin:6px 0 14px; }
 #app .arena-victory__team { display:grid;justify-items:center; }
 #app .arena-victory__team b { font:900 clamp(40px,7vw,84px)/1 "Lilita One",var(--rl-font,Archivo,sans-serif);
@@ -259,11 +313,23 @@
 #app .arena-victory__button--primary { background:linear-gradient(180deg,#6fd7f2,#39a9d8);border-color:#9ce9ff;color:#052139; }
 #app .arena-victory__button--primary:hover { filter:brightness(1.08); }
 #app .arena-victory__hint { margin:12px 0 0;font:700 9px/1 Archivo,sans-serif;letter-spacing:.24em;color:#5e86a0; }
-@media(max-width:640px) { #app .arena-victory__columns { grid-template-columns:1fr; } }
+@media(max-width:640px) {
+  #app .arena-victory__columns { grid-template-columns:1fr; }
+  #app .arena-victory__plate { min-width:200px;transform:skewX(-6deg); }
+  #app .arena-victory__plate > * { transform:skewX(6deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  #app .arena-victory__word { animation:none; }
+  #app .arena-victory__confetti i { animation:none; opacity:0; }
+}
 
 /* --------------------------------------------- online result (RL restyle) ---- */
 #app .online-results { text-align:center;padding:10px 0 4px; }
-#app .online-results .arena-victory__banner { font-size:clamp(36px,6vw,64px); }
+#app .online-results .arena-victory__word { font-size:clamp(34px,6vw,58px); }
+#app .online-results .arena-victory__caption { font-size:12px; }
+#app .online-results .arena-victory__podium { gap:8px; }
+#app .online-results .arena-victory__plate { min-width:190px; }
+#app .online-results .arena-victory__confetti { position:static;height:0; }
 #app .online-results .arena-victory__score { margin:2px 0 8px; }
 #app .online-results .arena-victory__team b { font-size:clamp(28px,4.5vw,48px); }
 #app .online-results .arena-victory__note { font-size:12px; }

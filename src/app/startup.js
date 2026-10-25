@@ -27,7 +27,7 @@ import { createPhysicsDebug } from "../diagnostics/physics-debug.js";
 import { physicsModeURL, resolvePhysicsSelection } from "../physics/presets.js";
 import { ORIGINAL_GAMEPLAY_CORE_SHA256, SOURCE_CORE_REVISION, SOURCE_CORE_SHA256 } from "../physics/source-runtime.js";
 
-import { Ae, Ai, Ct, Ee, F, Gt, It, Ke, Lm, Lt, NA, Ne, Ur, Ut, Ya, Zt, ai, c0, cn, fn, ka, l0, li, mt, oo, qt, rl } from "../vendor/three.js";
+import { Ae, Ai, Ct, Ee, F, Gi, Gt, It, Ke, Lm, Lt, NA, Ne, Ur, Ut, Wa, Xt, Ya, Zt, ai, c0, cn, fn, ka, l0, li, mt, oo, qt, rl } from "../vendor/three.js";
 import { CAR_STATE, CAR_STATE_STRIDE, EC, STATE_LAYOUT, getTeamAssignment, no, ro } from "../physics/state-layout.js";
 import { PhysicsSimulation } from "../physics/simulation.js";
 import { FrameScheduler } from "../rendering/frame-scheduler.js";
@@ -180,7 +180,8 @@ if (!an.querySelector("#loading")) {
           <span class="load__spin" aria-hidden="true"><i></i></span>
           <img class="load__mark" src="/assets/ui/rocket-arena-mark.webp" width="1254" height="1254" alt="" />
         </div>
-        <h1 class="load__title">ROCKET <span>LEAGUE</span></h1>
+        <h1 class="load__title">ROCKET <span>LEAGUE</span><sup class="load__reg" aria-hidden="true">®</sup></h1>
+        <p class="load__press" aria-hidden="true">PRESS ANY BUTTON TO START</p>
         <p class="load__tagline">Drive hard. Fly high. Own the field.</p>
         <div class="load__progress-block">
           <div class="load__status-row"><p class="load__label" role="status" aria-live="polite">Loading game code</p><output class="load__percent">0%</output></div>
@@ -199,6 +200,10 @@ if (!an.querySelector("#loading")) {
           <p class="load__tip" data-load-tip hidden></p>
         </div>
       </div>
+      <footer class="load__legal" aria-hidden="true">
+        <p>ROCKET LEAGUE® is the registered trademark of PSYONIX.</p>
+        <p>Fan-made tribute · Not affiliated with or endorsed by Psyonix Inc.</p>
+      </footer>
     </div>
   `;
 }
@@ -247,6 +252,37 @@ loadingTipInterval = setInterval(rotateLoadingTip, 5200);
 function stopLoadingTips() {
   clearInterval(loadingTipInterval);
   clearTimeout(loadingTipTimeout);
+}
+
+// Rocket League title gate: once every asset is loaded the boot screen turns
+// into the classic "PRESS ANY BUTTON TO START" screen and holds until the
+// player actually presses something (any key, any mouse/touch input, any pad
+// button). Automation (Playwright smoke runs) and ?autostart skip the gate so
+// headless verification keeps working unattended.
+function waitForStartPress() {
+  if (!nd.isConnected) return Promise.resolve();
+  const automated = navigator.webdriver || new URLSearchParams(window.location.search).has("autostart");
+  nd.dataset.state = "ready";
+  if (automated) return Promise.resolve();
+  return new Promise(resolve => {
+    let settled = false, poll = 0;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      for (const type of ["keydown", "pointerdown", "mousedown", "touchstart", "wheel"])
+        window.removeEventListener(type, finish, { capture: true });
+      cancelAnimationFrame(poll);
+      resolve();
+    };
+    const onPad = () => {
+      for (const pad of navigator.getGamepads?.() ?? [])
+        if (pad?.buttons?.some(button => button.pressed)) return finish();
+      poll = requestAnimationFrame(onPad);
+    };
+    poll = requestAnimationFrame(onPad);
+    for (const type of ["keydown", "pointerdown", "mousedown", "touchstart", "wheel"])
+      window.addEventListener(type, finish, { capture: true, once: true });
+  });
 }
 
 function updateLoading(progress, label, note) {
@@ -916,8 +952,10 @@ async function startGame() {
   s.sync(ze);
   completeLoadingTask("renderer", "Ready", "Entering Rocket League.");
   await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-  // Fade the finished loading screen out instead of popping it away.
+  // Rocket League boot flow: hold the "PRESS ANY BUTTON TO START" title screen
+  // until real input arrives, then fade out into the main menu.
   stopLoadingTips();
+  await waitForStartPress();
   nd.dataset.state = "done";
   setTimeout(() => nd.remove(), 520);
   function wt(W) {
@@ -1100,7 +1138,8 @@ async function startGame() {
     SphereGeometry:Ur,DoubleSide:Ut,AdditiveBlending:li }, N.scene, te);
   arenaEffects = createArenaEffects({ BufferGeometry: Ct, Float32BufferAttribute: Ke,
     MeshBasicMaterial: cn, InstancedMesh: Lm, Object3D: It, Color: Ne,
-    Mesh: Ee, RingGeometry: Ya, DoubleSide: Ut, SphereGeometry: Ur, AdditiveBlending: li, Vector3: F }, N.scene, {
+    Mesh: Ee, RingGeometry: Ya, DoubleSide: Ut, SphereGeometry: Ur, AdditiveBlending: li, Vector3: F,
+    CylinderGeometry: Xt, LineSegments: Wa, LineBasicMaterial: Gi, ShaderMaterial: Lt }, N.scene, {
     lightweight: initialGraphics.qualityPreset === "potato", audioContext: getAudioContext, audioOutput: getAudioInput,
   });
   // -------------------------------------------------- announcer + scoreboard ----
@@ -1362,7 +1401,19 @@ async function startGame() {
   });
   pauseMenu = mountPauseMenu(an, {
     pause: open => { if (open) { w(); C.silence(); } qe("pause",open); },
+    state: () => ({ mode: a.state.mode, online: !!online?.active }),
     resume: () => st(),
+    // CHANGE TRAINING: free practice resets to a fresh kickoff, matches
+    // restart from zero — the RL "change what you are practising" intent.
+    training: () => {
+      if (online?.active) return;
+      if (a.state.mode === "match") void pe.options.onStart({ aborted: false });
+      else _e();
+    },
+    // FIND ONLINE MATCH: leave the current offline session and open matchmaking.
+    online: () => { pe.options.onLeave(); void online.open(); },
+    // CREATE PARTY from the player card: straight to the host action.
+    party: () => { pe.options.onLeave(); void online.open("host"); },
     settings: () => { returnPauseAfter = true; Xe.show(); },
     home: () => { pe.options.onLeave(); home.show(); },
   });
@@ -1415,6 +1466,20 @@ async function startGame() {
         arenaEffects.goal(N.ball.position.clone(), goalExplosionSpec(team));
       },
       testSave: (epic = false) => handleMatchEvents([{ kind: epic ? "epic_save" : "save", slot: 0, team: 0 }], matchEvents.summary(), offlineTeams, offlineRoster()),
+      // Debug winner screen with fabricated stats (UI verification).
+      testVictory: (outcome = "victory", ownTeam = 0) => victory.show({
+        outcome, team: ownTeam,
+        blueScore: (outcome === "victory" ? ownTeam === 0 : ownTeam === 1) ? 4 : 2,
+        orangeScore: (outcome === "victory" ? ownTeam === 0 : ownTeam === 1) ? 2 : 4,
+        stats: { slots: [
+          { slot: 0, team: 0, goals: 4, assists: 1, saves: 0, epicSaves: 0, shots: 6, demolitions: 1, ownGoals: 1, points: 520 },
+          { slot: 1, team: 1, goals: 2, assists: 0, saves: 2, epicSaves: 1, shots: 4, demolitions: 0, ownGoals: 0, points: 310 },
+          { slot: 2, team: 0, goals: 1, assists: 2, saves: 1, epicSaves: 0, shots: 3, demolitions: 0, ownGoals: 0, points: 260 },
+        ] },
+        roster: [{ name: "PSYONIX", team: 0 }, { name: "NEXTO", team: 1 }, { name: "TISI", team: 0 }],
+        teams: [0, 1, 0], selfSlot: 0,
+        note: "Casual match · No ratings or placements.",
+      }),
       scoreboardVisible: () => scoreboard.visible,
       scoreboardRows: () => document.querySelectorAll(".arena-scoreboard__player").length,
       stats: () => matchEvents.summary(),

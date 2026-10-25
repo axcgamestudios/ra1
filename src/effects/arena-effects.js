@@ -32,6 +32,43 @@ export function createArenaEffects(T, scene, { lightweight = false, audioContext
     if (index === 2) ring.rotation.x = -Math.PI / 2; // ground shockwave
     scene.add(ring); return ring;
   });
+  // Goal beams: tall additive light columns shooting from the goal mouth into
+  // the sky (the reference clip's silhouette), plus electric arcs flashing
+  // across the goal frame while the explosion plays.
+  const beams = [0,1,2].map(index => {
+    // Origin at the base: scale.y grows the column upward from the ground.
+    // Alpha fades toward the tip so the beam dissolves into the sky instead
+    // of ending in a hard edge.
+    const geometry = new T.CylinderGeometry(1, 1, 1, 14, 1, true);
+    geometry.translate(0, .5, 0);
+    const beam = new T.Mesh(geometry,
+      new T.ShaderMaterial({
+        uniforms: { color: { value: new T.Color(0xffffff) }, opacity: { value: 0 } },
+        vertexShader: 'varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
+        fragmentShader: 'uniform vec3 color;uniform float opacity;varying vec2 vUv;void main(){float fade=pow(1.-vUv.y,1.6);float a=opacity*fade;if(a<.004)discard;gl_FragColor=vec4(color*(1.+.9*fade),a);}',
+        transparent: true, depthWrite: false, blending: T.AdditiveBlending, side: T.DoubleSide, toneMapped: false }));
+    beam.name = `Arena / goal beam ${index}`;
+    beam.visible = false; scene.add(beam); return beam;
+  });
+  const ARC_SEGMENTS = 10; // zigzag segments per arc
+  const arcs = [0,1,2,3,4].map(index => {
+    const geometry = new T.BufferGeometry();
+    geometry.setAttribute('position', new T.Float32BufferAttribute(new Float32Array(ARC_SEGMENTS * 2 * 3), 3));
+    const arc = new T.LineSegments(geometry, new T.LineBasicMaterial({color:0xffffff,transparent:true,opacity:0,depthWrite:false,blending:T.AdditiveBlending,toneMapped:false}));
+    arc.name = `Arena / goal arc ${index}`;
+    arc.frustumCulled = false; arc.visible = false; scene.add(arc); return arc;
+  });
+  // Regenerates one arc as a rising zigzag across the goal mouth.
+  function applyArc(arc, width, heightBase) {
+    const positions = arc.geometry.getAttribute('position');
+    let vertex = 0;
+    for (let i = 0; i < ARC_SEGMENTS; i++) {
+      const t0 = i / ARC_SEGMENTS, t1 = (i + 1) / ARC_SEGMENTS;
+      positions.setXYZ(vertex++, -width/2 + width*t0, heightBase + t0*440 + (Math.random()-.5)*160, (Math.random()-.5)*90);
+      positions.setXYZ(vertex++, -width/2 + width*t1, heightBase + t1*440 + (Math.random()-.5)*160, (Math.random()-.5)*90);
+    }
+    positions.needsUpdate = true;
+  }
   function sound(kind,big=false) {
     try {
       const ctx=audioContext?.(); if (!ctx || ctx.state!=='running') return;
@@ -149,6 +186,23 @@ export function createArenaEffects(T, scene, { lightweight = false, audioContext
         {speedMin:60,speedRange:240,vyMin:900*cfg.fountain,vyRange:900*cfg.fountain,sizeMin:18,sizeRange:30,axial:.15,spread:220,drag:cfg.drag});
     }
     rings.forEach((ring,i)=>{ring.position.copy(position);ring.position.z+=side*(-15-i*5);ring.material.color.setHex(i===1?secondary:primary);ring.visible=true;});
+    // Light beams rising from the goal mouth + electric arcs across the frame.
+    const mouthZ = position.z + side * -60;
+    beams.forEach((beam,i)=>{
+      const radius = [95, 150, 95][i];
+      const height = [3600, 4600, 3600][i];
+      beam.position.set([-560, 0, 560][i], 0, mouthZ);
+      beam.scale.set(radius, height, radius);
+      beam.userData.height = height;
+      beam.material.uniforms.color.value.setHex(i === 1 ? secondary : primary);
+      beam.visible = true;
+    });
+    arcs.forEach((arc,i)=>{
+      applyArc(arc, 1760, [40, 120, 200, 280, 360][i]);
+      arc.position.set(0, 0, mouthZ);
+      arc.material.color.setHex(i % 2 ? secondary : primary);
+      arc.visible = true;
+    });
     // Flash sphere: instant glow at the goal mouth.
     flash.position.copy(position);flash.material.color.setHex(secondary);flash.scale.setScalar(30*cfg.flash);flash.scale0=30*cfg.flash;flash.material.opacity=.95*Math.min(1,cfg.flash);flash.visible=true;
     sound('goal');
@@ -190,10 +244,24 @@ export function createArenaEffects(T, scene, { lightweight = false, audioContext
         flash.material.opacity=Math.max(0,.95*(1-t/.4));
         if(t>.4)flash.visible=false;
       }
+      // Beams shoot up fast then hold while fading; arcs flicker like a short
+      // circuit across the goal frame.
+      const bt=Math.min(1,goalTime*3.2);
+      const grow=.35+.65*(1-Math.pow(1-bt,3));
+      beams.forEach((beam,i)=>{
+        beam.scale.y=(beam.userData.height??4600)*grow;
+        beam.material.uniforms.opacity.value=Math.max(0,.55*(1-goalTime/1.25)*(i===1?1:.8));
+        if(goalTime>1.25)beam.visible=false;
+      });
+      arcs.forEach(arc=>{
+        const alive=goalTime<.85;
+        arc.visible=alive;
+        if(alive)arc.material.opacity=Math.max(0,(Math.random()<.55?.85:.25)*(1-goalTime/.85));
+      });
       if(goalTime>1.3)goalTime=-1;
     }
     if(bursts.length)pending=true;
   }
-  function clear(){pending=false;bursts.length=0;for(const p of pool)p.life=0;shards.visible=false;shards.count=0;goalTime=-1;for(const ring of rings)ring.visible=false;flash.visible=false;}
+  function clear(){pending=false;bursts.length=0;for(const p of pool)p.life=0;shards.visible=false;shards.count=0;goalTime=-1;for(const ring of rings)ring.visible=false;flash.visible=false;for(const beam of beams)beam.visible=false;for(const arc of arcs)arc.visible=false;}
   return {pickup,goal,update,clear,get active(){return pending||shards.visible||goalTime>=0||bursts.length>0||flash.visible;}};
 }
