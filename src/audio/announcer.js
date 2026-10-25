@@ -133,5 +133,12 @@ export function createAnnouncer(root, { isEnabled = () => getAudioSettings().ann
     banner.remove();
   }
 
-  return { say, dispose, get enabled() { return enabled(); }, set enabled(value) { isEnabled = () => !!value; } };
+  // Preload every voice clip behind the boot loading screen. Individual
+  // failures stay silent (the speech fallback still covers them) so a missing
+  // clip can never block or break the game start.
+  async function preload() {
+    await Promise.allSettled(Object.keys(CLIPS).map(kind => loadClip(kind)));
+  }
+
+  return { say, dispose, preload, get enabled() { return enabled(); }, set enabled(value) { isEnabled = () => !!value; } };
 }

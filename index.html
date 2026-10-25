@@ -28,24 +28,38 @@
     <div id="app">
       <div id="loading" data-state="loading" style="--load-progress: 0%">
         <div class="load__panel">
-          <img
-            class="load__mark"
-            src="/assets/ui/rocket-arena-mark.webp"
-            width="1254"
-            height="1254"
-            alt=""
-          />
+          <div class="load__brand">
+            <span class="load__spin" aria-hidden="true"><i></i></span>
+            <img
+              class="load__mark"
+              src="/assets/ui/rocket-arena-mark.webp"
+              width="1254"
+              height="1254"
+              alt=""
+            />
+          </div>
           <h1 class="load__title">ROCKET <span>LEAGUE</span></h1>
           <p class="load__tagline">Drive hard. Fly high. Own the field.</p>
-            <div class="load__progress-block">
-              <div class="load__status-row">
-                <p class="load__label" role="status" aria-live="polite">Loading game code</p>
-              </div>
-            <div class="load__rule" role="progressbar" aria-label="Game loading progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
-              <span class="load__bar"></span>
+          <div class="load__progress-block">
+            <div class="load__status-row">
+              <p class="load__label" role="status" aria-live="polite">Loading game code</p>
               <output class="load__percent">0%</output>
             </div>
+            <div class="load__rule" role="progressbar" aria-label="Game loading progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+              <span class="load__bar"></span>
+            </div>
+            <ul class="load__stages" aria-hidden="true">
+              <li data-stage="code">Game code</li>
+              <li data-stage="physics">Physics engine</li>
+              <li data-stage="arena">Stadium</li>
+              <li data-stage="ball">Ball</li>
+              <li data-stage="vehicles">Car models</li>
+              <li data-stage="audio">Announcer</li>
+              <li data-stage="fonts">Interface</li>
+              <li data-stage="renderer">Ready check</li>
+            </ul>
             <p class="load__note">Preparing the game modules.</p>
+            <p class="load__tip" data-load-tip hidden></p>
           </div>
         </div>
       </div>

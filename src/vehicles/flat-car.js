@@ -52,6 +52,12 @@ function Y0() {
   );
 }
 
+// Drop the cached flat-car asset so the next Y0() call re-downloads a fresh
+// GLB. Used by the boot loading gate when a model resolves without geometry.
+function resetFlatCarCache() {
+  pa = null;
+}
+
 function Z0(i, e) {
   const t = new dt();
   return (
@@ -69,4 +75,4 @@ function Q0(i, e, t) {
   return (r.position.set(0, 0, 0), n.add(r), n);
 }
 
-export { $d, J0, Q0, Qb, X0, Y0, Z0, e1, t1 };
+export { $d, J0, Q0, Qb, X0, Y0, Z0, e1, resetFlatCarCache, t1 };

@@ -245,5 +245,11 @@ export function createSketchfabModels({ Group, Mesh, Vector3, Box3, makeMaterial
     });
     return root;
   }
-  return {loadCar,loadBall,preview};
+  // Drop the car asset caches so the next load re-downloads fresh GLBs. The
+  // ball cache stays: built balls keep their meshes, nothing re-requests it.
+  function reset() {
+    cars.clear();
+    originalCars.clear();
+  }
+  return {loadCar,loadBall,preview,reset};
 }

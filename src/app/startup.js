@@ -36,7 +36,7 @@ import { getBindingLabel, loadBindings } from "../input/bindings.js";
 import { Ks } from "../input/controller-selection.js";
 import { GamepadInput } from "../input/gamepad.js";
 import { TouchInput } from "../input/touch.js";
-import { isSketchfabCar } from "../vehicles/imported-models.js";
+import { isSketchfabCar, resetCarAssetCaches } from "../vehicles/imported-models.js";
 import { e1 } from "../vehicles/flat-car.js";
 import { getAudioContext, getAudioInput } from "../audio/settings.js";
 import { _1 } from "../audio/spatial.js";
@@ -176,13 +176,27 @@ if (!an.querySelector("#loading")) {
   an.innerHTML = `
     <div id="loading" data-state="loading" style="--load-progress: 0%">
       <div class="load__panel">
-        <img class="load__mark" src="/assets/ui/rocket-arena-mark.webp" width="1254" height="1254" alt="" />
+        <div class="load__brand">
+          <span class="load__spin" aria-hidden="true"><i></i></span>
+          <img class="load__mark" src="/assets/ui/rocket-arena-mark.webp" width="1254" height="1254" alt="" />
+        </div>
         <h1 class="load__title">ROCKET <span>LEAGUE</span></h1>
         <p class="load__tagline">Drive hard. Fly high. Own the field.</p>
         <div class="load__progress-block">
-          <div class="load__status-row"><p class="load__label" role="status" aria-live="polite">Loading game code</p></div>
-          <div class="load__rule" role="progressbar" aria-label="Game loading progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span class="load__bar"></span><output class="load__percent">0%</output></div>
+          <div class="load__status-row"><p class="load__label" role="status" aria-live="polite">Loading game code</p><output class="load__percent">0%</output></div>
+          <div class="load__rule" role="progressbar" aria-label="Game loading progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span class="load__bar"></span></div>
+          <ul class="load__stages" aria-hidden="true">
+            <li data-stage="code">Game code</li>
+            <li data-stage="physics">Physics engine</li>
+            <li data-stage="arena">Stadium</li>
+            <li data-stage="ball">Ball</li>
+            <li data-stage="vehicles">Car models</li>
+            <li data-stage="audio">Announcer</li>
+            <li data-stage="fonts">Interface</li>
+            <li data-stage="renderer">Ready check</li>
+          </ul>
           <p class="load__note">Preparing the game modules.</p>
+          <p class="load__tip" data-load-tip hidden></p>
         </div>
       </div>
     </div>
@@ -199,28 +213,67 @@ const loadingPercent = document.querySelector("#loading .load__percent");
 
 const loadingRule = document.querySelector("#loading .load__rule");
 
+const loadingTip = document.querySelector("#loading [data-load-tip]");
+
+// Loading tips, Rocket League style: rotate while the assets stream in.
+const LOADING_TIPS = [
+  "Boost pads refill 12 units — big pads fill the whole tank.",
+  "Hold jump while turning to air roll your car.",
+  "Dodge into the ball mid-air for a powerful shot.",
+  "Ball cam keeps the play in view — toggle it any time.",
+  "Supersonic cars demolish rivals on contact.",
+  "Powerslide (Shift) tightens ground turns sharply.",
+  "Own goals happen. Shake it off and rotate back.",
+  "Pass the ball — great passes score style points.",
+];
+let loadingTipIndex = 0, loadingTipTimeout = 0, loadingTipInterval = 0;
+function rotateLoadingTip() {
+  if (!loadingTip || !nd.isConnected) return;
+  const tip = LOADING_TIPS[loadingTipIndex % LOADING_TIPS.length];
+  loadingTipIndex += 1;
+  loadingTip.hidden = false;
+  loadingTip.classList.remove("is-leaving");
+  // Restart the fade-in, then schedule the fade-out half-way.
+  void loadingTip.offsetWidth;
+  loadingTip.textContent = tip;
+  clearTimeout(loadingTipTimeout);
+  loadingTipTimeout = setTimeout(() => {
+    loadingTip?.classList.add("is-leaving");
+    loadingTipTimeout = setTimeout(() => { if (loadingTip) loadingTip.hidden = true; }, 520);
+  }, 2400);
+}
+rotateLoadingTip();
+loadingTipInterval = setInterval(rotateLoadingTip, 5200);
+function stopLoadingTips() {
+  clearInterval(loadingTipInterval);
+  clearTimeout(loadingTipTimeout);
+}
+
 function updateLoading(progress, label, note) {
   const boundedProgress = Math.max(0, Math.min(100, Math.round(progress)));
   nd.style.setProperty("--load-progress", `${boundedProgress}%`);
-  loadingPercent.textContent = `${boundedProgress}%`;
+  loadingPercent && (loadingPercent.textContent = `${boundedProgress}%`);
   loadingRule.setAttribute("aria-valuenow", String(boundedProgress));
   if (label) Gc.textContent = label;
   if (note) rd.textContent = note;
 }
 
 const loadingTasks = new Map([
-  ["code", 10],
-  ["physics", 15],
-  ["arena", 25],
+  ["code", 8],
+  ["physics", 14],
+  ["arena", 22],
   ["ball", 8],
   ["vehicles", 22],
+  ["audio", 8],
   ["fonts", 5],
-  ["renderer", 15],
+  ["renderer", 13],
 ]);
 const completedLoadingTasks = new Set();
 
 function completeLoadingTask(task, label, note) {
   completedLoadingTasks.add(task);
+  // Checklist row: mark the finished stage with a check mark.
+  nd.querySelector(`.load__stages [data-stage="${task}"]`)?.setAttribute("data-done", "true");
   const progress = [...completedLoadingTasks].reduce(
     (total, completedTask) => total + (loadingTasks.get(completedTask) ?? 0),
     0,
@@ -232,6 +285,35 @@ async function trackLoadingTask(task, promise, label, note) {
   const result = await promise;
   completeLoadingTask(task, label, note);
   return result;
+}
+
+// Loading gate for the player's car: the resolved asset must contain actual
+// renderable geometry. A truncated model parse can resolve with empty groups,
+// which used to put an invisible car on the field — force a fresh download
+// (module caches reset) before giving up with a clear error message.
+async function ensureCarAssetRenderable(visual, world, attempts = 2) {
+  const countMeshes = root => {
+    let count = 0;
+    root?.traverse?.(object => {
+      if (object.isMesh && object.geometry && object.material) count += 1;
+    });
+    return count;
+  };
+  for (let attempt = 0; attempt <= attempts; attempt += 1) {
+    const asset = visual === "flat-car" ? world.flatCarAsset
+      : visual === "realistic" ? world.realisticCarAsset
+        : isSketchfabCar(visual) ? world.sketchfabCarAsset
+          : world.gameCarAsset;
+    const roots = asset?.body ? [asset.body, ...(asset.wheels ?? [])]
+      : asset && typeof asset === "object" ? Object.values(asset) : [];
+    const meshes = roots.reduce((total, root) => total + countMeshes(root), 0);
+    if (meshes > 0) return;
+    if (attempt === attempts) break;
+    setLoadingStatus("Reloading car model", "The car model came back incomplete — downloading it again.");
+    resetCarAssetCaches();
+    await world.loadCarAndPadAssets();
+  }
+  throw new Error("Car model could not be loaded (no renderable geometry after retries)");
 }
 
 function setLoadingStatus(label, note) {
@@ -293,11 +375,19 @@ async function startGame() {
   const D = new TouchInput(an);
   D.onReset = T;
   const N = new GameWorld(n.ballRadius, i, quality, initialGraphics.showStadium || initialGraphics.qualityPreset === "high");
+  // The announcer is created up front so its voice clips preload in parallel
+  // with the geometry downloads (its banner is inert until the first say()).
+  const announcer = createAnnouncer(an);
   await Promise.all([
     trackLoadingTask("arena", N.loadArena(), "Arena ready", "Stadium geometry and lighting are ready."),
     trackLoadingTask("ball", N.loadBall(), "Ball ready", "The match ball is ready for kickoff."),
     trackLoadingTask("vehicles", N.loadCarAndPadAssets(), "Vehicles ready", "Cars and boost pads are ready."),
+    trackLoadingTask("audio", announcer.preload(), "Announcer ready", "Stadium voice lines are ready."),
   ]);
+  // Load gate: every critical asset resolved, but the car model must still
+  // carry renderable geometry — a truncated model would put an invisible car
+  // on the field. Force one fresh download before giving up.
+  await ensureCarAssetRenderable(i, N);
   N.addCar(e);
   N.addPads(n.getPads());
   bindParkContactShadows(N.turf, N);
@@ -813,11 +903,23 @@ async function startGame() {
   N.update(s.prevState, s.currState, 0, 0, 0, A, A, !1);
   H.update(N.cars[r], N.ball, 0, be);
   renderGame(N.scene, H.camera);
+  // Ready check: the built player car must expose renderable meshes before
+  // the loading screen is dismissed — this is the invisible-car gate.
+  {
+    let carMeshes = 0;
+    N.cars[r].traverse(object => {
+      if (object.isMesh && object.geometry && object.material) carMeshes += 1;
+    });
+    if (!carMeshes) throw new Error("Player car built without renderable geometry");
+  }
   ze = performance.now();
   s.sync(ze);
   completeLoadingTask("renderer", "Ready", "Entering Rocket League.");
   await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-  nd.remove();
+  // Fade the finished loading screen out instead of popping it away.
+  stopLoadingTips();
+  nd.dataset.state = "done";
+  setTimeout(() => nd.remove(), 520);
   function wt(W) {
     if (home?.visible && !online?.active) {
       ze = W; s.sync(W);
@@ -1002,7 +1104,8 @@ async function startGame() {
     lightweight: initialGraphics.qualityPreset === "potato", audioContext: getAudioContext, audioOutput: getAudioInput,
   });
   // -------------------------------------------------- announcer + scoreboard ----
-  const announcer = createAnnouncer(an);
+  // (the announcer itself is created before the asset downloads so its clips
+  // preload behind the loading screen — see the Promise.all above)
   const scoreboard = createScoreboard(an);
   const offlineTeams = [t.playerTeam, t.botTeam];
   const offlineRoster = () => [{ name: "YOU", team: t.playerTeam }, { name: JA(o.id).name, team: t.botTeam }];
@@ -1252,9 +1355,6 @@ async function startGame() {
       qe("home", open);
     },
     casual: () => { pe.options.onLeave(); void online.open(); },
-    // Play-list quick entries land focus on the matching action in the dialog.
-    host: () => { pe.options.onLeave(); void online.open('host'); },
-    join: () => { pe.options.onLeave(); void online.open('join'); },
     match: () => { returnHomeAfter = "match"; ne = true; pe.show(); },
     freeplay: () => { pe.options.onLeave(); st(); },
     garage: () => { returnHomeAfter = "car"; ne = true; de.show(); },
@@ -1346,11 +1446,22 @@ async function startGame() {
 
 export function boot() {
 return startGame().catch((i) => {
+  stopLoadingTips();
   nd.dataset.state = "error";
   const e = nd.querySelector(".load__label");
   (e && (e.textContent = "Failed to start"),
     (rd.textContent = i instanceof Error ? i.message : String(i)),
     console.error(i));
+  // Always offer a one-click retry: a dropped request on a flaky link is the
+  // usual cause, and a reload re-downloads everything with fresh retries.
+  if (!nd.querySelector(".load__retry")) {
+    const reload = document.createElement("button");
+    reload.type = "button";
+    reload.className = "load__retry";
+    reload.textContent = "RELOAD";
+    reload.addEventListener("click", () => window.location.reload());
+    nd.append(reload);
+  }
   if (new URLSearchParams(window.location.search).has("physics")) {
     const recovery = document.createElement("a");
     recovery.textContent = "Restart with original physics";

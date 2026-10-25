@@ -16,7 +16,7 @@ page.setDefaultTimeout(90000);
 await page.goto(`http://127.0.0.1:${PORT}/?physicsDebug=1`, { waitUntil: 'domcontentloaded' });
 await page.locator('.arena-home:not([hidden])').waitFor();
 await page.locator('[data-home="play"]').click();
-await page.locator('.arena-play__item[data-home="freeplay"]').click();
+await page.locator('.arena-mode[data-home="freeplay"]').click();
 await page.waitForFunction(() => window.rocketArenaPresentation, null, { timeout: 60000 });
 await delay(1500);
 for (const ms of [80, 300, 700]) {

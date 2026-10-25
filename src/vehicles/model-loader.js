@@ -32,6 +32,13 @@ function og() {
   );
 }
 
+// Drop the cached realistic-car asset so the next og() call re-downloads a
+// fresh GLB. Used by the boot loading gate when a model resolves without
+// renderable geometry.
+function resetRealisticCarCache() {
+  ma = null;
+}
+
 function Ag(i, e, t, n) {
   const r = {
       "frame-details": e.group,
@@ -65,4 +72,4 @@ function Ag(i, e, t, n) {
   }
 }
 
-export { Ag, og };
+export { Ag, og, resetRealisticCarCache };

@@ -1,4 +1,6 @@
 import { createSketchfabModels } from "./sketchfab-models.js";
+import { resetFlatCarCache } from "./flat-car.js";
+import { resetRealisticCarCache } from "./model-loader.js";
 import {loadFennecV2Lighting,createReferenceImportedCarMaterial,resolveFennecV2Asset} from '../materials/fennec-v2.js';
 import { createImportedBallMaterial } from "../materials/ball.js";
 import { CAR_ENVIRONMENT_URL, PEARL_LIGHTING_URL } from "../materials/car.js";
@@ -94,6 +96,17 @@ function Uh() {
   );
 }
 
+// Drop every cached car asset (game-car, flat, realistic, sketchfab bodies)
+// so a fresh loadCarAndPadAssets() re-downloads the models from scratch. The
+// boot loading gate uses this when a car model resolves without renderable
+// geometry — the "car turned invisible" guard.
+function resetCarAssetCaches() {
+  rA = null;
+  resetFlatCarCache();
+  resetRealisticCarCache();
+  sketchfabModels.reset();
+}
+
 // One-time art pass on the original mesh. Same triangles, wheels and physics.
 function refineRocketHatch(body) {
   body.traverse((mesh) => {
@@ -117,4 +130,4 @@ function refineRocketHatch(body) {
   });
 }
 
-export { Uh, daylightMaterialTypes, daylightReflectionReady, getDaylightReflection, isSketchfabCar, sketchfabModels };
+export { Uh, resetCarAssetCaches, daylightMaterialTypes, daylightReflectionReady, getDaylightReflection, isSketchfabCar, sketchfabModels };

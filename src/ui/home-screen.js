@@ -17,16 +17,12 @@ export function mountHome(root, actions) {
     </nav></div>
     <section class="arena-play" data-home-page="play" hidden aria-label="Choose a game mode">
       <h1 class="arena-play__title">PLAY</h1>
-      <nav class="arena-play__list" aria-label="Game modes">
-        <button class="arena-play__item" type="button" data-home="match" data-hint="Set up a custom offline match with AI opponents."><span>EXHIBITION</span><small>OFFLINE · VS BOTS</small></button>
-        <button class="arena-play__item" type="button" data-home="freeplay" data-hint="Free training arena with unlimited boost and no opponents."><span>TRAINING</span><small>OFFLINE · FREE PLAY</small></button>
-        <button class="arena-play__item" type="button" data-home="host" data-hint="Host a peer-to-peer room and share the five-letter code."><span>HOST LOCAL LOBBY</span><small>ONLINE · CREATE A ROOM</small></button>
-        <button class="arena-play__item" type="button" data-home="join" data-hint="Choose a server to join from a list of servers."><span>JOIN LOCAL LOBBY</span><small>ONLINE · ENTER ROOM CODE</small></button>
-      </nav>
-      <footer class="arena-play__footer">
-        <button type="button" data-home="back">BACK</button>
-        <p class="arena-play__hint" data-play-hint role="status">Choose a game mode to start playing.</p>
-      </footer>
+      <div class="arena-play__grid">
+        <button class="arena-mode" type="button" data-home="casual"><img src="/assets/menu/casual-original.webp" alt="" draggable="false"><span><strong>MULTIPLAYER</strong><small>Online · P2P 1v1 / 2v2 / 3v3 · Room code</small></span></button>
+        <button class="arena-mode" type="button" data-home="match"><img src="/assets/online/bots.webp" alt="" draggable="false"><span><strong>BOTS</strong><small>Offline · Three AI difficulties</small></span></button>
+        <button class="arena-mode" type="button" data-home="freeplay"><img src="/assets/menu/freeplay-original.webp" alt="" draggable="false"><span><strong>FREE PLAY</strong><small>Offline · Solo practice</small></span></button>
+      </div>
+      <nav class="arena-play__actions" aria-label="Play menu actions"><button type="button" data-home="back">BACK</button></nav>
     </section>
     `;
   const homeButton = document.createElement('button');
@@ -43,19 +39,8 @@ export function mountHome(root, actions) {
     try { panel.querySelector('[data-home-level]').textContent = 'LVL ' + playerLevel(); } catch {}
   };
   syncPlayerCard();
-  // Play list hint bar: the focused/hovered mode explains itself, RL style.
-  const hint = panel.querySelector('[data-play-hint]');
-  const defaultHint = 'Choose a game mode to start playing.';
-  for (const item of panel.querySelectorAll('.arena-play__item')) {
-    const apply = () => { hint.textContent = item.dataset.hint || defaultHint; };
-    item.addEventListener('pointerenter', apply);
-    item.addEventListener('focus', apply);
-  }
-  for (const list of panel.querySelectorAll('.arena-play__list'))
-    list.addEventListener('focusout', () => {
-      if (!list.querySelector('.arena-play__item:focus')) hint.textContent = defaultHint;
-    });
   let visible = false, dirty = true, drag = null, poll = 0, page = 'main';
+  let enterTimer = 0;
   let lastDirection = 0, lastMove = 0, previousConfirm = false, previousCancel = false;
   const orbit = { yaw: 2.087180175781252, pitch: 0.08, distance: 1 };
   const buttons = () => [...panel.querySelectorAll('[data-home]')].filter(button => !button.hidden && !button.closest('[hidden]'));
@@ -94,6 +79,7 @@ export function mountHome(root, actions) {
   function close() {
     if (!visible) return;
     visible = false; panel.hidden = true; root.classList.remove('home-open');
+    clearTimeout(enterTimer); panel.classList.remove('is-entering');
     if (drag && panel.hasPointerCapture?.(drag.id)) panel.releasePointerCapture(drag.id);
     drag = null; panel.classList.remove('is-orbiting');
     cancelAnimationFrame(poll); poll = 0;
@@ -103,7 +89,12 @@ export function mountHome(root, actions) {
     if (visible) return;
     visible = true; dirty = true; panel.hidden = false; root.classList.add('home-open');
     syncPlayerCard();
-    hint.textContent = defaultHint;
+    // Replay the staggered menu entrance each time the home screen opens.
+    panel.classList.remove('is-entering');
+    void panel.offsetWidth;
+    panel.classList.add('is-entering');
+    clearTimeout(enterTimer);
+    enterTimer = setTimeout(() => panel.classList.remove('is-entering'), 1200);
     actions.pause(true);
     setPage('main');
     const pad = Ks();

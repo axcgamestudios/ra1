@@ -1,6 +1,6 @@
-// Visual verification for this pass: announcer banner (all kinds), the RL-style
-// play menu (rows + hint + player card with level), and the scoreboard's new
-// side rails/mode/overtime treatment.
+// Visual verification for this pass: boot loading screen (stage checklist +
+// tips), the reverted play-mode grid, the animated main menu, announcer banner
+// (all kinds), and the scoreboard's side rails/mode/overtime treatment.
 import { chromium } from 'playwright';
 import { spawn } from 'node:child_process';
 import { mkdir } from 'node:fs/promises';
@@ -32,36 +32,44 @@ page.setDefaultTimeout(90000);
 const errors = [];
 page.on('pageerror', e => errors.push(String(e).slice(0, 250)));
 await page.goto(`http://127.0.0.1:${PORT}/?physicsDebug=1`, { waitUntil: 'domcontentloaded' });
-await page.locator('.arena-home:not([hidden])').waitFor();
 const results = {};
 
-// Home: player card with level + play list rows + hint bar.
+// Boot loading screen: stage checklist + tips visible, then it fades away.
+await page.locator('#loading').waitFor();
+results.loadingStages = await page.locator('#loading .load__stages li').count();
+results.loadingTip = await page.locator('#loading [data-load-tip]').count();
+await page.screenshot({ path: `${out}/loading.png` });
+await page.locator('.arena-home:not([hidden])').waitFor();
+await until(async () => (await page.locator('#loading').count()) === 0);
+results.loadingGone = true;
+console.log('loading:', JSON.stringify(results));
+
+// Home: player card with level + staggered entrance + FX classes.
 results.level = await page.locator('[data-home-level]').textContent();
+results.entering = await page.locator('.arena-home.is-entering').count();
 await page.screenshot({ path: `${out}/home-main.png` });
 await page.locator('[data-home="play"]').click();
 await delay(400);
-results.playItems = await page.locator('.arena-play__item').count();
-results.hint = await page.locator('[data-play-hint]').textContent();
-await page.locator('.arena-play__item[data-home="join"]').hover();
+results.playItems = await page.locator('.arena-mode').count();
+await page.locator('.arena-mode[data-home="match"]').hover();
 await delay(300);
-results.hintJoin = await page.locator('[data-play-hint]').textContent();
-await page.screenshot({ path: `${out}/home-play-list.png` });
+await page.screenshot({ path: `${out}/home-play-grid.png` });
 console.log('home:', JSON.stringify(results));
 
-// JOIN quick-entry lands on the multiplayer dialog focused for a code.
-await page.locator('.arena-play__item[data-home="join"]').click();
+// MULTIPLAYER card opens the peer-to-peer dialog.
+await page.locator('.arena-mode[data-home="casual"]').click();
 await delay(1200);
-results.joinFocus = await page.evaluate(() => document.activeElement?.name || document.activeElement?.dataset?.p2p || String(document.activeElement?.className));
+results.onlineVisible = await page.locator('.online-status').isVisible();
 results.joinStatus = await page.locator('.online-status').textContent();
 await page.screenshot({ path: `${out}/home-join-dialog.png` });
-console.log('join entry:', JSON.stringify(results));
+console.log('multiplayer entry:', JSON.stringify(results));
 
 // Freeplay: announcer banners + scoreboard.
 await page.locator('[data-p2p="back"]').click();
 await delay(600);
 await page.locator('[data-home="play"]').click();
 await delay(300);
-await page.locator('.arena-play__item[data-home="freeplay"]').click();
+await page.locator('.arena-mode[data-home="freeplay"]').click();
 await page.waitForFunction(() => window.rocketArenaPresentation, null, { timeout: 60000 });
 await delay(2000);
 for (const kind of ['what-a-save', 'epic-save', 'demolition', 'great-pass']) {
@@ -98,7 +106,8 @@ console.log('scoreboard:', JSON.stringify(results));
 console.log('page errors:', errors.length ? errors.slice(0, 5) : 'none');
 await browser.close();
 server.kill();
-const ok = results.playItems === 4 && results.level === 'LVL 13' && results.board.visible && results.board.rows >= 2
+const ok = results.playItems === 3 && results.loadingStages === 8 && results.loadingGone
+  && results.level === 'LVL 13' && results.board.visible && results.board.rows >= 2
   && results.board.blueWins === '112' && errors.length === 0;
 console.log(ok ? 'PASS: UI verification' : 'FAIL: UI verification');
 process.exit(ok ? 0 : 1);
