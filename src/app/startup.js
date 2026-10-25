@@ -3,8 +3,8 @@ import { MatchEvents } from '../match/match-events.js';
 import { createAnnouncer } from '../audio/announcer.js';
 import { createScoreboard, scoreboardData } from '../ui/scoreboard.js';
 import { createVictoryScreen } from '../ui/victory-screen.js';
-import { createSpeedMeter } from '../ui/speed-meter.js';
 import { applyStadiumAccents, getStadium, setStadium, subscribeStadium } from '../arena/stadium-themes.js';
+import { goalExplosionSpec } from '../settings/car-customization.js';
 import { setCarMaterialQuality } from "../materials/car.js";
 import {FennecV2Post} from '../rendering/fennec-v2-post.js';
 import { ReferencePost } from '../rendering/reference-post.js';
@@ -562,7 +562,6 @@ async function startGame() {
       ((le = !1), xe(), s.sync());
     });
   const Be = new ArcadeBoostMeter(an),
-    speedMeter = createSpeedMeter(an),
     Ze = document.createElement("p");
   ((Ze.className = "ball-cam-indicator"),
     (Ze.textContent = "Ball cam"),
@@ -982,12 +981,8 @@ async function startGame() {
       s.currState[sr + CAR_STATE.BOOST],
       s.currState[sr + CAR_STATE.IS_BOOSTING] === 1,
       a.state.mode === "freeplay" && V.boostOption === "unlimited",
+      fe,
     ),
-      // Animated speedometer: uu/s magnitude, community "KPH" convention.
-      speedMeter.update(
-        Math.hypot(s.currState[sr + CAR_STATE.VEL], s.currState[sr + CAR_STATE.VEL + 1], s.currState[sr + CAR_STATE.VEL + 2]),
-        s.currState[sr + CAR_STATE.SUPERSONIC] === 1 && s.currState[sr + CAR_STATE.DEMOED] !== 1,
-      ),
       He.mark());
     (He.mark(),
       quality.shadows && (te.shadowMap.needsUpdate = !0),
@@ -1036,8 +1031,9 @@ async function startGame() {
     for (const event of events ?? []) {
       if (event.kind === "goal") {
         announcer.say("goal", { team: event.team });
-        // Online has no goal presentation; fire the (bigger) local explosion.
-        if (online?.active) arenaEffects.goal(N.ball.position.clone(), event.team === 0 ? 0x55baff : 0xffab47);
+        // Online has no goal presentation; fire the (bigger) local explosion
+        // with the garage-customized style and colors.
+        if (online?.active) arenaEffects.goal(N.ball.position.clone(), goalExplosionSpec(event.team));
       } else if (event.kind === "nice_shot") {
         setTimeout(() => announcer.say("nice-shot", { team: event.team }), 550);
       } else if (event.kind === "great_pass") {
@@ -1177,6 +1173,7 @@ async function startGame() {
   const celebrationPhysics = new GoalCelebrationPhysics(n,{playerIndex:r,neutralControls:A,sampleControls:he});
   goalPresentation = new GoalPresentation({ world:N,camera:H.camera,buffer:replayBuffer,effects:arenaEffects,root:an,
     playerIndex:r,carStride:CAR_STATE_STRIDE,carOffset:STATE_LAYOUT.CARS,boostOffset:CAR_STATE.BOOST,neutralControls:A,
+    goalSpec: team => goalExplosionSpec(team),
     celebration:{
       begin:()=>celebrationPhysics.begin(),
       update:(delta)=>{
@@ -1265,7 +1262,8 @@ async function startGame() {
     // arenas paint this car with ITS OWNER's garage colors, never the viewer's.
     paint: () => {
       const trim = settings => ({ primary: settings.primary, pearl: settings.pearl, boostColor: settings.boostColor,
-        roughness: settings.roughness, metalness: settings.metalness, clearcoat: settings.clearcoat });
+        roughness: settings.roughness, metalness: settings.metalness, clearcoat: settings.clearcoat,
+        decal: settings.decal, decalColor: settings.decalColor, decalScale: settings.decalScale });
       return { blue: trim(getCarCustomization(i, 'blue')), orange: trim(getCarCustomization(i, 'orange')) };
     },
     modal: open => { ne = open; qe("online", open); },
@@ -1300,7 +1298,7 @@ async function startGame() {
         matchEvents.slots[0].points += 100;
         handleMatchEvents([{ kind: "goal", slot: 0, team, ownGoal: false }], matchEvents.summary(), offlineTeams, offlineRoster());
         // A debug goal simulates the full presentation, explosion included.
-        arenaEffects.goal(N.ball.position.clone(), team === 0 ? 0x55baff : 0xffab47);
+        arenaEffects.goal(N.ball.position.clone(), goalExplosionSpec(team));
       },
       testSave: (epic = false) => handleMatchEvents([{ kind: epic ? "epic_save" : "save", slot: 0, team: 0 }], matchEvents.summary(), offlineTeams, offlineRoster()),
       scoreboardVisible: () => scoreboard.visible,
@@ -1317,6 +1315,9 @@ async function startGame() {
         return paint;
       }),
       stadium: { set: setStadium, get: getStadium, accents: () => N.stadiumAccents?.children.length ?? 0 },
+      // Stadium/goal diagnostics: live scene traversal and camera framing.
+      world: () => N,
+      camera: () => H.camera,
     }) });
   }
   home.show();

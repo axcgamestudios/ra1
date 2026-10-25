@@ -1,4 +1,4 @@
-import { getCarCustomization, DEFAULT_CAR_MATERIAL, TEAM_CAR_COLORS } from '../settings/car-customization.js';
+import { getCarCustomization, DEFAULT_CAR_MATERIAL, TEAM_CAR_COLORS, DECAL_IDS } from '../settings/car-customization.js';
 
 // Applies an already-resolved paint settings object (any source: the local
 // garage store, or a roster entry that travelled over the wire) to every
@@ -17,6 +17,12 @@ export function applyCarCustomizationSettings(root, settings) {
       if (uniforms.uRoughness) uniforms.uRoughness.value = settings.roughness;
       if (uniforms.uMetalness) uniforms.uMetalness.value = settings.metalness;
       if (uniforms.uClearcoat) uniforms.uClearcoat.value = settings.clearcoat;
+      // Calcomanías: pattern id + color + density on the same bodywork pass.
+      if (uniforms.uDecalStyle) {
+        uniforms.uDecalStyle.value = DECAL_IDS[settings.decal] ?? 0;
+        uniforms.uDecalColor?.value.set(settings.decalColor ?? '#ffffff');
+        if (uniforms.uDecalScale) uniforms.uDecalScale.value = settings.decalScale ?? 1;
+      }
     }
   });
   return settings;
@@ -33,6 +39,12 @@ export function remoteCarPaint(player, team = 0) {
   const key = team === 1 || team === 'orange' ? 'orange' : 'blue';
   const wire = player?.paint?.[key];
   if (wire?.primary)
-    return { ...DEFAULT_CAR_MATERIAL, ...TEAM_CAR_COLORS[key], ...wire, finish: wire.finish ?? 'glossy' };
+    return {
+      ...DEFAULT_CAR_MATERIAL, ...TEAM_CAR_COLORS[key], ...wire,
+      finish: wire.finish ?? 'glossy',
+      decal: DECAL_IDS[wire.decal] !== undefined ? wire.decal : 'none',
+      decalColor: wire.decalColor ?? '#ffffff',
+      decalScale: wire.decalScale ?? 1,
+    };
   return { ...DEFAULT_CAR_MATERIAL, ...TEAM_CAR_COLORS[key] };
 }

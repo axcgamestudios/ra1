@@ -208,3 +208,53 @@
 .rl-garage .garage-team-tabs button:hover { border-color:#67b6d8; }
 .rl-garage .garage-team-tabs button[data-garage-team-tab="blue"].is-active { background:linear-gradient(180deg,#1273c4,#0b4d8c); border-color:#6fc6ff; color:#fff; box-shadow:0 0 0 1px #6fc6ff88,0 6px 18px #0b5d8c66; }
 .rl-garage .garage-team-tabs button[data-garage-team-tab="orange"].is-active { background:linear-gradient(180deg,#d97a1f,#9c4d0c); border-color:#ffb266; color:#fff; box-shadow:0 0 0 1px #ffb26688,0 6px 18px #9c541066; }
+
+/* ---- Decals (calcomanías) and goal explosion panels ---- */
+.rl-garage .garage-style-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:8px; margin:2px 4px 18px; }
+.rl-garage .garage-style-card { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:9px;
+  min-height:64px; padding:10px 8px; border:1px solid #35566d; border-radius:5px; cursor:pointer;
+  background:linear-gradient(180deg,#082436,#051523); color:#bfe2f2; font:700 12px/1.2 Archivo,Arial,sans-serif; letter-spacing:.06em;
+  transition:transform .12s,border-color .12s,box-shadow .12s; }
+.rl-garage .garage-style-card:hover { transform:translateY(-2px); border-color:#67b6d8; color:#eaf8ff; }
+.rl-garage .garage-style-card svg { width:52px; height:26px; color:#9fd8f2; }
+.rl-garage .garage-style-card.is-active { border-color:#7ce4ff; color:#fff;
+  box-shadow:0 0 0 1px #7ce4ff88,0 6px 16px #0b5d8c55, inset 0 0 24px #7ce4ff1c; }
+.rl-garage .garage-style-card.is-active svg { color:var(--decal-color,#fff); }
+.rl-garage .garage-decal-preview { height:96px; position:relative; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px;
+  background:radial-gradient(ellipse,#122f45,transparent); }
+.rl-garage .garage-decal-preview span { display:block; width:56%; height:34px; border-radius:5px;
+  background:linear-gradient(180deg,var(--car-pearl),var(--car-primary));
+  background-image:repeating-linear-gradient(90deg,transparent 0 30%,var(--decal-color,#fff) 30% 34%,transparent 34% 46%,var(--decal-color,#fff) 46% 48%,transparent 48% 100%),
+                   linear-gradient(180deg,var(--car-pearl),var(--car-primary));
+  box-shadow:inset 0 -8px 14px #0006, 0 4px 14px #0006; }
+.rl-garage .garage-decal-preview strong { font:800 13px/1 Archivo,Arial,sans-serif; letter-spacing:.22em; color:#8ce9ff; }
+.rl-garage .garage-explosion-sample { height:150px; position:relative; overflow:hidden; display:block;
+  background:radial-gradient(ellipse at 50% 78%, #0d2740, #05101c 70%); }
+.rl-garage .garage-explosion-sample i { position:absolute; left:50%; top:78%; width:6px; height:6px; border-radius:2px;
+  background:var(--explosion-primary,#ffb347); opacity:0;
+  animation:garage-explosion-spark 2.4s ease-out infinite; }
+.rl-garage .garage-explosion-sample i:nth-child(1) { --sa:15deg;  --sd:.15s; --ss:1.1; }
+.rl-garage .garage-explosion-sample i:nth-child(2) { --sa:60deg;  --sd:.35s; --ss:.8; }
+.rl-garage .garage-explosion-sample i:nth-child(3) { --sa:105deg; --sd:.55s; --ss:1.3; }
+.rl-garage .garage-explosion-sample i:nth-child(4) { --sa:150deg; --sd:.75s; --ss:.9; }
+.rl-garage .garage-explosion-sample i:nth-child(5) { --sa:200deg; --sd:.3s;  --ss:1.2; }
+.rl-garage .garage-explosion-sample i:nth-child(6) { --sa:250deg; --sd:.6s;  --ss:.75; }
+.rl-garage .garage-explosion-sample i:nth-child(7) { --sa:295deg; --sd:.85s; --ss:1.05; }
+.rl-garage .garage-explosion-sample i:nth-child(8) { --sa:330deg; --sd:.45s; --ss:1.25; }
+.rl-garage .garage-explosion-sample i:nth-child(9) { --sa:80deg;  --sd:.95s; --ss:.6; }
+.rl-garage .garage-explosion-sample i:nth-child(10){ --sa:280deg; --sd:1.05s;--ss:.85; }
+.rl-garage .garage-explosion-sample[data-style]::after { content:""; position:absolute; left:50%; top:78%; width:14px; height:14px; border-radius:50%;
+  background:radial-gradient(circle,var(--explosion-secondary,#fff),transparent 70%);
+  animation:garage-explosion-flash 2.4s ease-out infinite; }
+@keyframes garage-explosion-spark {
+  0%   { transform:rotate(var(--sa)) translateY(0) scale(.4); opacity:0; }
+  8%   { opacity:1; }
+  55%  { transform:rotate(var(--sa)) translateY(calc(-70px * var(--ss,1))) scale(1.15); opacity:.9; }
+  100% { transform:rotate(var(--sa)) translateY(calc(-120px * var(--ss,1))) scale(.2); opacity:0; }
+}
+@keyframes garage-explosion-flash {
+  0%,6%   { transform:translate(-50%,-50%) scale(.3); opacity:0; }
+  8%      { opacity:1; }
+  26%     { transform:translate(-50%,-50%) scale(6); opacity:0; }
+  100%    { opacity:0; }
+}

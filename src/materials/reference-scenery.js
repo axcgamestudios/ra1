@@ -1,13 +1,21 @@
 // OPEN_ME compensates photographed / already-graded map colors before MakeUp's
 // output curve. This preserves existing artwork without editing any asset.
 export const REFERENCE_SCENERY_FRAGMENT = `
-uniform float referenceMakeup,referenceHaze,referenceLook,referenceSky;
+uniform float referenceMakeup,referenceHaze,referenceLook,referenceSky,referenceStadiumTint;
 uniform vec3 referenceTint,referenceHorizon;
 varying vec3 referenceWorldPosition;
 vec3 referenceSignal(vec3 c){c=max(c,vec3(0.));return mix(c*12.92,1.055*pow(c,vec3(1./2.4))-.055,step(vec3(.0031308),c));}
 vec3 referenceLinear(vec3 s){s=max(s,vec3(0.));return mix(s/12.92,pow((s+.055)/1.055,vec3(2.4)),step(vec3(.04045),s));}
 vec3 referenceSceneryRadiance(vec3 linearColor){
- if(referenceMakeup<.5)return linearColor;
+ if(referenceMakeup<.5){
+   // Stadium looks must survive outside the MakeUp renderer: a plain display-space
+   // tint plus horizon haze is enough to turn the shared arena into night or dusk.
+   if(referenceStadiumTint<.5)return linearColor;
+   vec3 tinted=referenceSignal(linearColor)*referenceTint;
+   float plainHaze=clamp(pow(length(referenceWorldPosition-cameraPosition)/20000.,3.)*referenceHaze,0.,.6);
+   tinted=mix(tinted,referenceHorizon,plainHaze);
+   return referenceLinear(clamp(tinted,vec3(0.),vec3(1.)));
+ }
  vec3 display=referenceSignal(linearColor)*referenceTint;
  if(referenceLook>.5){
    if(referenceSky>.5){

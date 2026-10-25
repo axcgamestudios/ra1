@@ -35,7 +35,9 @@ const SNAPSHOT_HZ_BY_MODE = { '1v1': 60, '2v2': 40, '3v3': 30 };
 const CONGESTION_BYTES = 32768;
 // Paint fields that travel with each player so every car wears its owner's
 // garage colors instead of the viewer's local garage paint.
-const PAINT_KEYS = ['primary', 'pearl', 'boostColor', 'roughness', 'metalness', 'clearcoat'];
+const PAINT_KEYS = ['primary', 'pearl', 'boostColor', 'roughness', 'metalness', 'clearcoat',
+  'decal', 'decalColor', 'decalScale'];
+const DECAL_CHOICES = ['none', 'stripes', 'twin', 'hex', 'camo', 'checker', 'split', 'flames', 'circuit', 'wrap'];
 // Message flow version: 2 = lobby + welcome-at-START (team rosters). Clients
 // with a different flow cannot understand each other's lobby messages.
 const FLOW = 2;
@@ -121,10 +123,12 @@ function sanitizePaint(paint) {
     if (!source || typeof source !== 'object') continue;
     const entry = {};
     for (const key of PAINT_KEYS) {
-      if (key === 'boostColor' || key === 'primary' || key === 'pearl') {
+      if (key === 'boostColor' || key === 'primary' || key === 'pearl' || key === 'decalColor') {
         if (typeof source[key] === 'string' && /^#[0-9a-f]{6}$/i.test(source[key])) entry[key] = source[key].toLowerCase();
+      } else if (key === 'decal') {
+        if (DECAL_CHOICES.includes(source[key])) entry[key] = source[key];
       } else if (typeof source[key] === 'number' && Number.isFinite(source[key])) {
-        entry[key] = Math.min(1, Math.max(0, source[key]));
+        entry[key] = key === 'decalScale' ? Math.min(3, Math.max(.25, source[key])) : Math.min(1, Math.max(0, source[key]));
       }
     }
     if (entry.primary) clean[team] = entry;

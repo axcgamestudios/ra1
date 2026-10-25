@@ -3,11 +3,120 @@
   position: fixed; min-width: 0; padding: 0; border: 0; border-radius: 0;
   background: transparent; box-shadow: none; pointer-events: none;
   z-index: 30; transform: none; filter: none; animation: none;
+  --boost-c1: #ff7a1a;
+  --boost-c2: #ffb347;
+  --boost-c3: #ffe98a;
+  --boost-level: 0;
+}
+/* Approved HUD component footprint. The dial itself is drawn live: gradient
+   arc, rotating rim, flare and sparks — all CSS/SVG animation. */
+#app .boost.arcade-boost {
+  width: clamp(118px, 14vw, 220px); height: auto; aspect-ratio: 1;
+  right: max(1.55vw, env(safe-area-inset-right)); bottom: max(5.2vh, env(safe-area-inset-bottom));
+}
+.arcade-boost__dial { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.arcade-boost__orbit {
+  fill: none; stroke: rgba(255, 200, 120, .30); stroke-width: 3;
+  stroke-dasharray: 2 10; stroke-linecap: round;
+  transform-origin: 100px 100px; transform-box: view-box;
+  animation: boost-orbit 16s linear infinite;
+}
+.arcade-boost__track {
+  fill: none; stroke: rgba(10, 18, 28, .72); stroke-width: 12; stroke-linecap: round;
+  transform: rotate(135deg); transform-origin: 100px 100px; transform-box: view-box;
+  stroke-dasharray: 358.4 1000;
+}
+.arcade-boost__ticks { opacity: .8; }
+.arcade-boost__tick { stroke: rgba(214, 226, 238, .34); stroke-width: 2; stroke-linecap: round; }
+.arcade-boost__tick--major { stroke: rgba(240, 248, 255, .6); stroke-width: 3; }
+.arcade-boost__fill {
+  fill: none; stroke: url(#arcadeBoostFill); stroke-width: 11; stroke-linecap: round;
+  filter: drop-shadow(0 0 6px rgba(255, 164, 60, .55));
+  transition: stroke-dashoffset .18s ease-out;
+}
+.arcade-boost__rim {
+  fill: none; stroke: rgba(255, 255, 255, .05); stroke-width: 1.5;
+}
+.arcade-boost__flare {
+  position: absolute; inset: 12%; border-radius: 50%;
+  background: radial-gradient(circle at 50% 46%, var(--boost-c2), transparent 62%);
+  opacity: calc(.12 + .5 * var(--boost-level));
+  animation: boost-flare 2.6s ease-in-out infinite;
+  pointer-events: none;
 }
 .arcade-boost__number {
-  position: absolute; display: grid; place-items: center; font-variant-numeric: tabular-nums;
+  position: absolute; inset: 0; display: grid; place-items: center;
+  font-family: 'Arial Narrow', 'Liberation Sans Narrow', sans-serif; font-weight: 700;
+  font-size: clamp(38px, 4.6vw, 72px); line-height: 1; letter-spacing: -.03em;
+  font-variant-numeric: tabular-nums;
+  background: linear-gradient(180deg, #fff7d6 12%, var(--boost-c3) 38%, var(--boost-c1) 88%);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  filter: drop-shadow(0 2px 0 rgba(96, 44, 6, .85));
 }
-.arcade-boost.is-empty .arcade-boost__number { color: #c3cbd3; }
+.arcade-boost__number.is-pop { animation: boost-pop .32s cubic-bezier(.2, 1.6, .4, 1); }
+.arcade-boost__sparks { position: absolute; inset: 0; pointer-events: none; display: none; }
+.arcade-boost__sparks i {
+  position: absolute; left: 50%; top: 50%; width: 5px; height: 5px; border-radius: 50%;
+  background: radial-gradient(circle, #fff3b0 0%, var(--boost-c1) 55%, transparent 75%);
+  opacity: 0;
+}
+/* ---- states ---- */
+.arcade-boost.is-low { --boost-c1: #ff3b2f; --boost-c2: #ff7448; --boost-c3: #ffb46e; }
+.arcade-boost.is-low .arcade-boost__fill { animation: boost-low .9s ease-in-out infinite; }
+.arcade-boost.is-empty .arcade-boost__number {
+  background: none; color: #c3cbd3; filter: none;
+}
+.arcade-boost.is-firing .arcade-boost__dial { animation: boost-fire .5s ease-in-out infinite; }
+.arcade-boost.is-firing .arcade-boost__orbit { animation-duration: 2.4s; }
+.arcade-boost.is-firing .arcade-boost__flare { opacity: calc(.3 + .5 * var(--boost-level)); animation-duration: .6s; }
+.arcade-boost.is-firing .arcade-boost__sparks { display: block; }
+.arcade-boost.is-firing .arcade-boost__sparks i { animation: boost-spark .55s ease-out infinite; }
+.arcade-boost.is-firing .arcade-boost__sparks i:nth-child(1) { --spark-angle: 25deg; animation-delay: 0s; }
+.arcade-boost.is-firing .arcade-boost__sparks i:nth-child(2) { --spark-angle: 70deg; animation-delay: .09s; }
+.arcade-boost.is-firing .arcade-boost__sparks i:nth-child(3) { --spark-angle: 115deg; animation-delay: .18s; }
+.arcade-boost.is-firing .arcade-boost__sparks i:nth-child(4) { --spark-angle: 205deg; animation-delay: .05s; }
+.arcade-boost.is-firing .arcade-boost__sparks i:nth-child(5) { --spark-angle: 285deg; animation-delay: .14s; }
+.arcade-boost.is-firing .arcade-boost__sparks i:nth-child(6) { --spark-angle: 335deg; animation-delay: .23s; }
+.arcade-boost.is-firing .arcade-boost__number { animation: boost-number-fire .55s ease-in-out infinite alternate; }
+.arcade-boost.is-gaining .arcade-boost__dial { animation: boost-gain .45s ease-out; }
+.arcade-boost.is-full .arcade-boost__number { animation: boost-full 1.8s ease-in-out infinite; }
+.arcade-boost.is-unlimited .arcade-boost__number { animation: boost-full 1.4s ease-in-out infinite; }
+/* ---- keyframes ---- */
+@keyframes boost-orbit { to { transform: rotate(360deg); } }
+@keyframes boost-flare {
+  0%, 100% { transform: scale(.96); filter: brightness(.9); }
+  50% { transform: scale(1.05); filter: brightness(1.25); }
+}
+@keyframes boost-pop {
+  0% { transform: scale(1.28); }
+  55% { transform: scale(.94); }
+  100% { transform: scale(1); }
+}
+@keyframes boost-fire {
+  0%, 100% { transform: scale(1); filter: brightness(1); }
+  50% { transform: scale(1.035); filter: brightness(1.3); }
+}
+@keyframes boost-low {
+  0%, 100% { filter: drop-shadow(0 0 4px rgba(255, 60, 40, .4)); }
+  50% { filter: drop-shadow(0 0 12px rgba(255, 70, 45, .95)); }
+}
+@keyframes boost-spark {
+  0% { transform: rotate(var(--spark-angle)) translateY(-44%) scale(.6); opacity: 1; }
+  100% { transform: rotate(var(--spark-angle)) translateY(-88%) scale(1.4); opacity: 0; }
+}
+@keyframes boost-number-fire {
+  from { filter: drop-shadow(0 0 3px rgba(255, 210, 120, .5)); }
+  to { filter: drop-shadow(0 2px 0 rgba(96, 44, 6, .85)) drop-shadow(0 0 9px rgba(255, 190, 80, .9)); }
+}
+@keyframes boost-gain {
+  0% { transform: scale(1); }
+  35% { transform: scale(1.09); filter: brightness(1.5); }
+  100% { transform: scale(1); }
+}
+@keyframes boost-full {
+  0%, 100% { filter: drop-shadow(0 2px 0 rgba(96, 44, 6, .85)); }
+  50% { filter: drop-shadow(0 2px 0 rgba(96, 44, 6, .85)) drop-shadow(0 0 14px rgba(255, 232, 130, .95)); }
+}
 #app .match-scoreboard {
   top: max(0px, env(safe-area-inset-top)); left: 50%;
   border-radius: 0; color: white; box-shadow: none;
@@ -39,28 +148,6 @@ body.touch-controls-enabled #app #settings-button,
   box-sizing: border-box;
 }
 #app #settings-button:focus-visible { outline: 2px solid #f8d38a; outline-offset: 2px; }
-/* Approved HUD component artwork. Decorations are baked WebP textures, not live paths. */
-#app .boost.arcade-boost {
-  width: clamp(118px, 14vw, 220px); height: auto; aspect-ratio: 234 / 240;
-  right: max(1.55vw, env(safe-area-inset-right)); bottom: max(5.2vh, env(safe-area-inset-bottom));
-}
-.arcade-boost__dial, .arcade-boost__fill {
-  position: absolute; inset: 0; width: 100%; height: 100%;
-  background: url('/assets/ui/hud/boost-dial.webp') center / contain no-repeat;
-}
-.arcade-boost__fill {
-  background-image: url('/assets/ui/hud/boost-fuel.webp');
-  --boost-sweep: 0deg;
-  mask-image: conic-gradient(from 180deg at 50.8547% 52.0833%, #000 0deg var(--boost-sweep), transparent var(--boost-sweep) 360deg);
-  -webkit-mask-image: conic-gradient(from 180deg at 50.8547% 52.0833%, #000 0deg var(--boost-sweep), transparent var(--boost-sweep) 360deg);
-}
-.arcade-boost__number {
-  inset: 42% 9% auto; height: 25%; color: #ffd459;
-  font-family: 'Arial Narrow', 'Liberation Sans Narrow', sans-serif; font-weight: 400;
-  font-size: clamp(36px, 4.5vw, 68px); line-height: 1; letter-spacing: -.045em;
-  text-shadow: 0 1px #9b420a; transform: rotate(2deg);
-}
-.arcade-boost.is-firing .arcade-boost__number { color: #fff5b0; }
 #app .match-scoreboard {
   display: block; width: clamp(255px, 21.83vw, 365px); height: auto; aspect-ratio: 365 / 120;
   padding: 0; border: 0; background: url('/assets/ui/hud/scoreboard.webp') center / contain no-repeat;

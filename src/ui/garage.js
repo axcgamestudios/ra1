@@ -1,6 +1,6 @@
 import { createSettingsStore } from '../core/settings-store.js';
 import { Ks } from '../input/controller-selection.js';
-import { GARAGE_CARS, CAR_FINISHES, TEAM_CAR_COLORS, getCarCustomization, normalizeGarageCar, saveCarCustomization } from '../settings/car-customization.js';
+import { GARAGE_CARS, CAR_FINISHES, TEAM_CAR_COLORS, TEAM_EXPLOSIONS, CAR_DECALS, getCarCustomization, getGoalExplosion, saveGoalExplosion, normalizeGarageCar, saveCarCustomization } from '../settings/car-customization.js';
 import { GaragePreview } from './garage-preview.js';
 import { garageMarkup, garageCategories } from './garage-view.js';
 
@@ -26,8 +26,21 @@ export class Garage {
     this.overlay.querySelectorAll('[data-garage-team-tab]').forEach(button => button.addEventListener('click', () => this.setTeam(button.dataset.garageTeamTab)));
     this.overlay.querySelectorAll('[data-paint-color]').forEach(input => input.addEventListener('input', () => this.savePaint({ [input.dataset.paintColor]: input.value })));
     this.overlay.querySelectorAll('[data-color-swatch]').forEach(button => button.addEventListener('click', () => this.savePaint({ primary: button.dataset.colorSwatch })));
+    // Decals: pattern cards, color and density ride the same per-team paint record.
+    this.overlay.querySelectorAll('[data-decal-choice]').forEach(button => button.addEventListener('click', () => this.savePaint({ decal: button.dataset.decalChoice })));
+    // Goal explosion: its own per-team record (style, colors, blast size).
+    this.overlay.querySelectorAll('[data-explosion-choice]').forEach(button => button.addEventListener('click', () => this.saveExplosion({ style: button.dataset.explosionChoice })));
+    this.overlay.querySelectorAll('[data-explosion-color]').forEach(input => input.addEventListener('input', () => this.saveExplosion({ [input.dataset.explosionColor]: input.value })));
+    const explosionIntensity = this.overlay.querySelector('[data-explosion-intensity]');
+    explosionIntensity?.addEventListener('input', () => this.saveExplosion({ intensity: Number(explosionIntensity.value) }));
+    this.overlay.querySelector('[data-reset-explosion]')?.addEventListener('click', () => this.saveExplosion({ ...TEAM_EXPLOSIONS[this.team] }));
     this.overlay.querySelector('[data-car-finish]').addEventListener('change', event => { const finish = event.target.value, values = CAR_FINISHES[finish]; this.savePaint({ finish, roughness: values.roughness, metalness: values.metalness, clearcoat: values.clearcoat }); });
-    this.overlay.querySelectorAll('[data-car-material]').forEach(input => input.addEventListener('input', () => this.savePaint({ finish: 'custom', [input.dataset.carMaterial]: Number(input.value) })));
+    this.overlay.querySelectorAll('[data-car-material]').forEach(input => input.addEventListener('input', () => {
+      const key = input.dataset.carMaterial;
+      // decalScale is not a finish property; moving it must not flip the
+      // paint finish to "custom".
+      this.savePaint(key === 'decalScale' ? { decalScale: Number(input.value) } : { finish: 'custom', [key]: Number(input.value) });
+    }));
     this.overlay.querySelector('[data-reset-boost]').addEventListener('click', () => this.savePaint({ boostColor: TEAM_CAR_COLORS[this.team].boostColor }));
     window.addEventListener('keydown', event => this.handleKey(event));
     this.syncCards(); this.syncControls(); this.setCategory('body');
@@ -107,6 +120,34 @@ export class Garage {
       button.classList.toggle('is-active', active); button.setAttribute('aria-pressed', String(active));
     }
     for (const input of this.overlay.querySelectorAll('[data-car-material]')) { input.value = settings[input.dataset.carMaterial]; this.overlay.querySelector(`[data-material-output="${input.dataset.carMaterial}"]`).textContent = Number(input.value).toFixed(2); }
+    // Decals panel reflects the per-team paint record.
+    for (const button of this.overlay.querySelectorAll('[data-decal-choice]')) {
+      const active = button.dataset.decalChoice === settings.decal;
+      button.classList.toggle('is-active', active);
+      button.setAttribute('aria-pressed', String(active));
+    }
+    const decalSwatch = this.overlay.querySelector('[data-decal-swatch]');
+    if (decalSwatch) decalSwatch.style.setProperty('--decal-color', settings.decalColor);
+    const decalTitle = this.overlay.querySelector('[data-decal-title]');
+    if (decalTitle) decalTitle.textContent = (CAR_DECALS[settings.decal]?.label ?? 'Clean').toUpperCase();
+    // Goal explosion panel reflects its own record.
+    const explosion = getGoalExplosion(this.team);
+    for (const button of this.overlay.querySelectorAll('[data-explosion-choice]')) {
+      const active = button.dataset.explosionChoice === explosion.style;
+      button.classList.toggle('is-active', active);
+      button.setAttribute('aria-pressed', String(active));
+    }
+    for (const input of this.overlay.querySelectorAll('[data-explosion-color]')) input.value = explosion[input.dataset.explosionColor];
+    const intensityInput = this.overlay.querySelector('[data-explosion-intensity]');
+    if (intensityInput) intensityInput.value = explosion.intensity;
+    const intensityOutput = this.overlay.querySelector('[data-explosion-output="intensity"]');
+    if (intensityOutput) intensityOutput.textContent = Number(explosion.intensity).toFixed(2);
+    const explosionSample = this.overlay.querySelector('[data-explosion-sample]');
+    if (explosionSample) {
+      explosionSample.style.setProperty('--explosion-primary', explosion.primary);
+      explosionSample.style.setProperty('--explosion-secondary', explosion.secondary);
+      explosionSample.dataset.style = explosion.style;
+    }
     this.overlay.querySelector('[data-car-finish]').value = settings.finish;
     this.overlay.querySelector('[data-detail-name]').textContent = GARAGE_CARS.find(car => car.id === this.selected).label;
     this.overlay.querySelector('[data-detail-quality]').textContent = this.selected === 'octane' ? 'Common Body' : 'Import Body';
@@ -124,6 +165,7 @@ export class Garage {
     this.overlay.dataset.team = this.team;
   }
   savePaint(patch) { saveCarCustomization(this.selected, this.team, patch); this.syncControls(); this.stage.select(this.selected, this.team); this.overlay.querySelector('[data-car-result]').textContent = `${this.team === 'blue' ? 'Blue' : 'Orange'} team customization applied.`; }
+  saveExplosion(patch) { saveGoalExplosion(this.team, patch); this.syncControls(); this.overlay.querySelector('[data-car-result]').textContent = `${this.team === 'blue' ? 'Blue' : 'Orange'} team goal explosion updated.`; }
   async choose(carId) {
     if (this.committing || this.display.carVisual === carId) return;
     this.committing = true; const status = this.overlay.querySelector('[data-car-result]'); status.textContent = 'Preparing car…';

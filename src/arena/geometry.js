@@ -396,7 +396,7 @@ function VS() {
         vec2 netUV=abs(normal.z)>.5?p.xy:(abs(normal.y)>.5?p.xz:p.zy);
         float honeycomb=goalHexGrid(netUV,36.);
         tint = mix(vec3(.48,.65,.71),mix(goalBlue,goalOrange,step(0.,p.z)),.16);
-        alpha = honeycomb * .42 * distanceFade;
+        alpha = honeycomb * .32 * distanceFade;
       }
       alpha *= 1. - smoothstep(2100., 3000., cameraPosition.y) * .90;
       diffuseColor.rgb = tint;

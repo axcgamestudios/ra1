@@ -59,24 +59,25 @@ vec3 shadeGoal(vec3 eye) {
     // Spill stays local, leaving the outer shell dark and the silver bevel crisp.
     result+=goalTeam*exp(-abs(b)*.087)*front*.16;
   }else if(part<1.5){
-    // Recessed aluminium throat: broad silver-blue light, fine panel joins.
+    // Recessed throat: kept DARK so the goal mouth reads as an open window
+    // instead of a bright frosted panel filling the opening.
     float d=goalSurface.y;
-    result=vec3(.31,.43,.52)*illumination+steel*.85;
+    result=vec3(.15,.21,.27)*illumination+steel*.48;
     float line=abs(mod(goalSurface.x+94.,188.)-94.);
     float seam=1.-smoothstep(.7,2.1+fwidth(goalSurface.x),line);
     result*=1.-seam*.20;
-    result+=goalTeam*(.035+.06*exp(-max(d,0.)/180.));
+    result+=goalTeam*(.025+.045*exp(-max(d,0.)/180.));
   }else if(part<2.5){
     // Swept shoulders and lamp housings have a dark polished exterior.
     result=vec3(.008,.018,.028)*illumination+steel*.46;
   }else if(part<3.5){
-    // The goal floor is team-painted turf, with soft baked recess occlusion.
+    // The goal floor is team-painted turf kept dim, with soft baked recess occlusion.
     float x=abs(goalWorldPosition.x),z=abs(goalWorldPosition.z)-5120.;
     float ao=smoothstep(540.,805.,x)*.30+smoothstep(670.,850.,z)*.24;
-    result=goalTeam*vec3(.56,.64,.76)*(1.-ao);
-    result+=vec3(.012,.025,.035)*(1.-ao);
+    result=goalTeam*vec3(.30,.36,.44)*(1.-ao);
+    result+=vec3(.010,.020,.028)*(1.-ao);
     float stripe=1.-smoothstep(3.,7.,abs(z-62.));
-    result=mix(result,vec3(.50,.68,.75),stripe*.65);
+    result=mix(result,vec3(.30,.42,.48),stripe*.45);
   }else if(part<4.5){
     // Frosted top beacons, white core with a saturated team-colored shoulder.
     vec3 frost=goalTeam.b>goalTeam.r?vec3(.72,1.,1.25):vec3(1.25,.97,.68);

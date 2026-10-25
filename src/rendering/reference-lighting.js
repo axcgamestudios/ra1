@@ -13,7 +13,7 @@ export class ReferenceLighting {
     this.uniforms = {
       referenceMakeup: { value: 1 }, referenceTint: { value: new F(1, 1, 1) },
       referenceHaze: { value: 0 }, referenceHorizon: { value: new F(.47, .75, .92) },
-      referenceLook: { value: 0 },
+      referenceLook: { value: 0 }, referenceStadiumTint: { value: 0 },
     };
     // Stadium switches re-tint the whole scenery on the next update pass.
     this.unsubscribeStadium = subscribeStadium(() => { this.dirty = true; });
@@ -44,6 +44,7 @@ export class ReferenceLighting {
     this.uniforms.referenceHorizon.value.fromArray(colors.horizon);
     // Stadium look: tint/horizon/sun/background overrides on top of the palette.
     const overlay = stadiumUniformOverlay(stadium);
+    this.uniforms.referenceStadiumTint.value = Number(Boolean(overlay));
     if (overlay) {
       this.uniforms.referenceTint.value.fromArray(overlay.tint);
       this.uniforms.referenceHorizon.value.fromArray(overlay.horizon);

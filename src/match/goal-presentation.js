@@ -4,9 +4,9 @@ import { sampleReplay } from "./goal-replay.js";
 export class GoalPresentation {
   constructor({ world, camera, buffer, effects, root, playerIndex = 0,
     carStride = 51, carOffset = 22, boostOffset = 18,
-    neutralControls = {}, celebration = null, onReplay = () => {}, onStart = () => {}, onFinish = () => {}, onBoost = () => {} }) {
+    neutralControls = {}, goalSpec = null, celebration = null, onReplay = () => {}, onStart = () => {}, onFinish = () => {}, onBoost = () => {} }) {
     Object.assign(this, { world, camera, buffer, effects, root, playerIndex,
-      carStride, carOffset, boostOffset, neutralControls, celebration, onReplay, onStart, onFinish, onBoost });
+      carStride, carOffset, boostOffset, neutralControls, goalSpec, celebration, onReplay, onStart, onFinish, onBoost });
     this._active = false;
     this.document = root.ownerDocument;
     this.window = this.document.defaultView;
@@ -88,7 +88,9 @@ export class GoalPresentation {
     this.window.addEventListener("keydown", this.keydown, true);
     this.onStart();
     this.celebration?.begin();
-    this.effects?.goal(this.origin, team === 0 ? 0x55baff : 0xffab47);
+    // The explosion follows the scorer's team: garage style + colors when a
+    // resolver is wired, otherwise the stock team blast.
+    this.effects?.goal(this.origin, this.goalSpec ? this.goalSpec(team) : (team === 0 ? 0x55baff : 0xffab47));
     this.update(0);
     return true;
   }

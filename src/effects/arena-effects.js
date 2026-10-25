@@ -17,7 +17,7 @@ export function createArenaEffects(T, scene, { lightweight = false, audioContext
   scene.add(shards);
   const marker = new T.Object3D(), tint = new T.Color();
   const pool = Array.from({length:capacity},()=>({life:0,total:0,x:0,y:0,z:0,vx:0,vy:0,vz:0,size:0,color:0,drag:1}));
-  let cursor=0, goalTime=-1, goalPattern=0, lastPickupSound=-10, noise=null, pending=false;
+  let cursor=0, goalTime=-1, goalPattern=0, goalRingStyle=1, lastPickupSound=-10, noise=null, pending=false;
   // Delayed secondary bursts (firework shells) emitted from update().
   const bursts = [];
   // Goal flash: one reusable additive sphere, animated per goal.
@@ -107,27 +107,50 @@ export function createArenaEffects(T, scene, { lightweight = false, audioContext
   function scheduleBurst(position,delay,count,color,options) {
     bursts.push({at:delay,position:position.clone(),count,color,options});
   }
-  function goal(position,color){
-    goalPattern=Math.random()<.34?1:Math.random()<.5?2:3;
+  // Goal explosion styles, selected in the garage. Every style is a parameter
+  // set over the same pooled shards / rings / flash — no new passes.
+  const EXPLOSION_STYLES = {
+    classic:   { main:130, shells:7,  fountain:.34, ringScale:1,   ringTime:1,   flash:1,   speed:1,   vy:1,   drag:1,   life:1,   multicolor:false },
+    fireworks: { main:60,  shells:14, fountain:.1,  ringScale:.8,  ringTime:1.4, flash:1.1, speed:1,   vy:.9,  drag:.68, life:1.25,multicolor:true },
+    fountain:  { main:70,  shells:4,  fountain:1.6, ringScale:1.15,ringTime:.9,  flash:.8,  speed:.55, vy:2.1, drag:.9,  life:1.5, multicolor:false },
+    rings:     { main:60,  shells:3,  fountain:.15, ringScale:2.6, ringTime:2.1, flash:1.3, speed:.8,  vy:.8,  drag:1,   life:1.2, multicolor:false },
+    nova:      { main:170, shells:5,  fountain:.2,  ringScale:2.2, ringTime:1.6, flash:2.4, speed:1.7, vy:1.4, drag:1,   life:.9,  multicolor:false },
+    confetti:  { main:150, shells:2,  fountain:.5,  ringScale:.7,  ringTime:1.8, flash:.5,  speed:.45, vy:1.5, drag:.5,  life:2.4, multicolor:true },
+  };
+  function goal(position, spec){
+    // Accept the legacy plain-color call shape as well as the garage spec.
+    const resolved = typeof spec === 'number'
+      ? { style: 'classic', primary: spec, secondary: 0xffffff, intensity: 1 }
+      : (spec ?? {});
+    const cfg = EXPLOSION_STYLES[resolved.style] ?? EXPLOSION_STYLES.classic;
+    const primary = resolved.primary ?? 0xffbe52;
+    const secondary = resolved.secondary ?? 0xffffff;
+    const k = Math.max(.4, Math.min(2.2, Number(resolved.intensity) || 1));
+    const palette = cfg.multicolor ? [primary, secondary, 0xffffff, primary] : null;
+    const pick = () => palette ? palette[Math.floor(Math.random() * palette.length)] : primary;
+    goalPattern = Math.random()<.34?1:Math.random()<.5?2:3;
     goalTime=0;
+    goalRingStyle=cfg.ringScale;
     const side=position.z>0?-1:1;
-    // Main radial blast at the ball, larger than the old single burst.
-    emit(position,lightweight?60:130,true,true,color,{speedMin:420,speedRange:1500,vyMin:260,vyRange:1300,sizeMin:24,sizeRange:52,spread:140});
+    // Main radial blast at the ball, sized by style and garage intensity.
+    emit(position,Math.max(8,Math.round((lightweight?60:cfg.main)*k)),true,true,pick(),
+      {speedMin:420*cfg.speed,speedRange:1500*cfg.speed,vyMin:260*cfg.vy,vyRange:1300*cfg.vy,sizeMin:24,sizeRange:52,spread:140,drag:cfg.drag,lifeRange:cfg.life});
     // Firework shells climbing above the goal, bursting in stages.
-    const shellCount=lightweight?3:7;
+    const shellCount=Math.max(1,Math.round((lightweight?3:cfg.shells)*Math.sqrt(k)));
     for(let i=0;i<shellCount;i++){
       const apex={x:position.x+(Math.random()-.5)*1600,y:900+Math.random()*1400,z:position.z+side*(300+Math.random()*900)};
-      scheduleBurst(new T.Vector3(position.x,position.y,position.z),.28+i*.12,lightweight?8:18,color,
-        {speedMin:300,speedRange:900,vyMin:60,vyRange:520,sizeMin:16,sizeRange:34,spread:60,lifeRange:.8,drag:.7});
-      scheduleBurst(new T.Vector3(apex.x,apex.y,apex.z),.55+i*.13,lightweight?10:22,i%2?0xffffff:color,
-        {speedMin:260,speedRange:820,vyMin:-40,vyRange:420,sizeMin:14,sizeRange:30,spread:40,lifeRange:.9,drag:.65});
+      scheduleBurst(new T.Vector3(position.x,position.y,position.z),.28+i*.12,Math.max(4,Math.round((lightweight?8:18)*k)),pick(),
+        {speedMin:300*cfg.speed,speedRange:900*cfg.speed,vyMin:60,vyRange:520*cfg.vy,sizeMin:16,sizeRange:34,spread:60,lifeRange:.8*cfg.life,drag:.7});
+      scheduleBurst(new T.Vector3(apex.x,apex.y,apex.z),.55+i*.13,Math.max(4,Math.round((lightweight?10:22)*k)),i%2?secondary:primary,
+        {speedMin:260*cfg.speed,speedRange:820*cfg.speed,vyMin:-40,vyRange:420*cfg.vy,sizeMin:14,sizeRange:30,spread:40,lifeRange:.9*cfg.life,drag:.65});
     }
-    if(goalPattern===2){ // double ring ceremony: extra vertical fountain at the mouth
-      emit({x:position.x,y:position.y,z:position.z},lightweight?24:60,true,true,0xffffff,{speedMin:60,speedRange:240,vyMin:900,vyRange:900,sizeMin:18,sizeRange:30,axial:.15,spread:220});
+    if(Math.random()<cfg.fountain){ // vertical fountain at the mouth
+      emit({x:position.x,y:position.y,z:position.z},Math.max(8,Math.round((lightweight?24:60)*cfg.fountain*k)),true,true,secondary,
+        {speedMin:60,speedRange:240,vyMin:900*cfg.fountain,vyRange:900*cfg.fountain,sizeMin:18,sizeRange:30,axial:.15,spread:220,drag:cfg.drag});
     }
-    rings.forEach((ring,i)=>{ring.position.copy(position);ring.position.z+=side*(-15-i*5);ring.material.color.setHex(color);ring.visible=true;});
+    rings.forEach((ring,i)=>{ring.position.copy(position);ring.position.z+=side*(-15-i*5);ring.material.color.setHex(i===1?secondary:primary);ring.visible=true;});
     // Flash sphere: instant glow at the goal mouth.
-    flash.position.copy(position);flash.material.color.setHex(0xffffff);flash.scale.setScalar(30);flash.material.opacity=.95;flash.visible=true;
+    flash.position.copy(position);flash.material.color.setHex(secondary);flash.scale.setScalar(30*cfg.flash);flash.scale0=30*cfg.flash;flash.material.opacity=.95*Math.min(1,cfg.flash);flash.visible=true;
     sound('goal');
   }
   function update(delta){
@@ -152,17 +175,18 @@ export function createArenaEffects(T, scene, { lightweight = false, audioContext
     if(count){shards.instanceMatrix.needsUpdate=true;shards.instanceColor.needsUpdate=true;}
     if(goalTime>=0){
       goalTime+=delta;
+      const ringStyle=goalRingStyle??1;
       rings.forEach((ring,i)=>{
         const t=goalTime-i*.13;
-        ring.visible=t>0&&t<1.1;
+        ring.visible=t>0&&t<1.1*ringStyle;
         if(ring.visible){
-          ring.scale.setScalar(90+t*(i===2?2600:(i?1550:2200)));
-          ring.material.opacity=Math.max(0,(1-t/1.1)*.65);
+          ring.scale.setScalar(90+t*(i===2?2600:(i?1550:2200))*ringStyle);
+          ring.material.opacity=Math.max(0,(1-t/(1.1*ringStyle))*.65);
         }
       });
       if(flash.visible){
         const t=goalTime;
-        flash.scale.setScalar(30+t*900);
+        flash.scale.setScalar(flash.scale0??30+t*900);
         flash.material.opacity=Math.max(0,.95*(1-t/.4));
         if(t>.4)flash.visible=false;
       }

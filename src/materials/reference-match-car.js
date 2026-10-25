@@ -12,7 +12,51 @@ uniform int uHasColorMap,uVanguardOriginal,uSpectreFront,uSpectreBody,uSolidFini
 uniform float uTripoBody;
 uniform float uHasSurfacePosition;
 varying vec3 vSurfacePosition;
-uniform float uSourceRoughness,uSourceMetalness,uSourceClearcoat;`)
+uniform float uSourceRoughness,uSourceMetalness,uSourceClearcoat;
+uniform int uDecalStyle;
+uniform vec3 uDecalColor;
+uniform float uDecalScale;
+// Calcomanías: patterns in car-local normalized space (x width, y height,
+// z length; vLocalPosition in the vertex stage). All are analytic so every
+// body pattern costs a few ALU instead of a texture lookup.
+float decalPattern(int style, vec3 lp, vec3 n){
+  float s=max(uDecalScale,.25);
+  vec3 p=lp/s;
+  float w=abs(p.x-.5);
+  if(style==1){ // Racing Stripes: twin center stripes over the top run.
+    float top=smoothstep(.25,.5,n.y);
+    float a=(1.-smoothstep(.035,.055,abs(w-.085)))+(1.-smoothstep(.02,.032,abs(w-.2)));
+    return a*top;
+  }else if(style==2){ // Twin Stripe: one wide plus one pinline.
+    float top=smoothstep(.2,.45,n.y);
+    float a=(1.-smoothstep(.085,.11,w))+(1.-smoothstep(.012,.02,abs(w-.17)));
+    return a*top;
+  }else if(style==3){ // Hex Tech: dot-matrix mesh over all bodywork.
+    float grid=fract(p.x*9.)*fract((p.z+p.y*.5)*12.);
+    return smoothstep(.18,.42,grid);
+  }else if(style==4){ // Camo: layered sines blobs.
+    float blob=sin(p.x*7.3+1.7)*sin(p.z*5.1)+sin(p.z*11.7+p.y*4.9)*sin(p.x*6.3+.8);
+    return smoothstep(.15,.6,blob*.5+.5);
+  }else if(style==5){ // Checker: classic rally squares on the top run.
+    float top=smoothstep(.25,.5,n.y);
+    float check=mod(floor(p.x*11.)+floor(p.z*15.),2.);
+    return check*.85*top;
+  }else if(style==6){ // Diagonal Split: bold two-tone quarter.
+    return 1.-smoothstep(.02,.05,abs(p.x+p.z*.6-.95));
+  }else if(style==7){ // Flames: licks spreading back from the nose.
+    float nose=1.-smoothstep(.1,.5,p.z-.35);
+    float wave=.5+.5*sin(p.x*22.+sin(p.z*9.)*2.2)*sin(p.z*13.-p.y*7.);
+    return smoothstep(.35,.62,nose+wave*.45);
+  }else if(style==8){ // Circuit: fine trace lines with pads.
+    float lines=min(abs(fract(p.x*5.)-.5),abs(fract(p.z*7.)-.5));
+    float trace=1.-smoothstep(.035,.06,lines);
+    float pads=step(.86,fract(p.x*5.)*fract(p.z*7.)*3.7);
+    return max(trace*.55,pads);
+  }else if(style==9){ // Roof Wrap: colored everything above the beltline.
+    return smoothstep(.45,.62,n.y);
+  }
+  return 0.;
+}`)
   .replace('return textureLod(uEnvironment,R,rough*(uEnvironmentFiltered==1?8.:7.)).rgb;', `
    vec3 radiance=textureLod(uEnvironment,R,rough*7.).rgb;
    if(uSpectreBody==1||uSolidFinish==1){
@@ -92,6 +136,10 @@ uniform float uSourceRoughness,uSourceMetalness,uSourceClearcoat;`)
     float garageEdge=smoothstep(.26,.86,1.-max(dot(N,V),0.)+uPearlShift);
     base=mix(uFace,uPearl,max(garageTop,garageEdge*.70));
     rough=uRoughness;metal=uMetalness;coat=uClearcoat;reflectScale=1.;
+    if(uDecalStyle>0){
+      float decalAlpha=decalPattern(uDecalStyle,vLocalPosition,normalize(vNormal));
+      base=mix(base,srgbToLinear(uDecalColor),clamp(decalAlpha,0.,1.)*.92);
+    }
   }
  // Normal-variance specular antialiasing protects thin highlights when orbiting.`)
   .replace('vec3(.28,.36,.48),specScale);', 'mix(vec3(.28,.36,.48),vec3(.72,.58,.40),uReferenceLook),specScale);')

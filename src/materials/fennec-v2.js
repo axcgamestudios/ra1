@@ -73,6 +73,7 @@ export function createFennecV2Material(source, environment) {
     uHasSurfacePosition:{value:0},
     uSurfaceFitScale:{value:new F(1,1,1)},uSurfaceFitOffset:{value:new F()},
     uGaragePaint:{value:0},
+    uDecalStyle:{value:0},uDecalColor:{value:new Ne(0xffffff)},uDecalScale:{value:1},
     uSourceRoughness:{value:source.roughness??.5},uSourceMetalness:{value:source.metalness??0},uSourceClearcoat:{value:source.userData.trioClearcoat??source.clearcoat??0},
     uMakeup:{value:1},uSunColor:{value:new F(.96,.965,.88)},uZenith:{value:new F(.18,.36,.60)},uHorizon:{value:new F(.47,.75,.92)},uOmniTint:{value:.2},uFog:{value:.65},uShadowBlur:{value:1.7},
     uColorMap:{value:rawMap(source.map)??neutralColor},uNormalMap:{value:rawMap(source.normalMap)??neutralNormal},
