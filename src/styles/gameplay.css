@@ -442,17 +442,28 @@ button:disabled {
   content: "";
   position: absolute;
   inset: -2%;
-  background: url('/assets/ui/rocket-arena-loading.webp') center / cover no-repeat;
-  filter: saturate(1.05) contrast(1.01);
+  /* User-supplied Rocket League promo photo (blue car + orange car + ball),
+     upscaled Lanczos with grain treatment in scripts/loading-photo-v2.py */
+  background: url('/assets/ui/rocket-league-promo.webp') center / cover no-repeat;
+  filter: saturate(1.02);
   transform: scale(1.025);
+  animation: load-photo-drift 26s ease-in-out infinite alternate;
+}
+/* Gentle Ken-Burns life on the promo art while assets stream in. */
+@keyframes load-photo-drift {
+  from { transform: scale(1.025) translate3d(-0.4%, 0.3%, 0); }
+  to   { transform: scale(1.06)  translate3d(0.5%, -0.3%, 0); }
 }
 #loading:after {
   content: "";
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(circle at 50% 42%, #ffffff12 0 12%, transparent 43%),
-    linear-gradient(180deg, #0757b31f, #031a4d70 72%, #02112da8);
+    /* soft scrim behind the centered logo/progress so the promo cars read as
+       artwork while every line of UI stays high-contrast (photo has a bright
+       ball at dead center, so the shield needs the darker ellipse) */
+    radial-gradient(ellipse 120% 85% at 50% 46%, #02172ea8 0%, #02172e78 40%, #02172e38 66%, transparent 100%),
+    linear-gradient(180deg, #031a4d55, #02153685 70%, #02112dc2);
 }
 .load__panel {
   position: relative;
@@ -709,8 +720,25 @@ button:disabled {
   .load__tagline { margin-bottom: 24px; }
   #loading .load__stages { margin-top: 12px; }
 }
+/* Narrow/portrait crops of the wide promo photo put bright arena lights right
+   behind the title and the press prompt: deepen the center scrim and add
+   heavier text halos so every line stays high-contrast on phones. */
+@media (max-width: 600px), (orientation: portrait) {
+  #loading:after {
+    background:
+      radial-gradient(ellipse 130% 62% at 50% 40%, #02172ed4 0%, #02172e9e 45%, #02172e56 72%, transparent 100%),
+      linear-gradient(180deg, #031a4d70, #021536a6 55%, #02112de8);
+  }
+  #loading p.load__press {
+    text-shadow: 0 2px 8px #000f, 0 0 24px #000d;
+  }
+  #loading h1.load__title {
+    text-shadow: 0 4px 18px #000f, 0 10px 44px #000d;
+  }
+}
 @media (prefers-reduced-motion: reduce) {
   .load__spin:before, .load__spin:after, #loading .load__bar:after { animation: none; }
+  #loading:before { animation: none; }
   #loading[data-state="ready"] .load__press { animation: none; }
   #loading[data-state="ready"] .load__brand { animation: none; }
 }

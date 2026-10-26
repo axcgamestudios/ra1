@@ -84,7 +84,9 @@
 #app .match-difficulty__rank { color: inherit; }
 #app :is(.sheet,.car-dialog,.match-panel) :is(button,a,input,select):focus-visible { outline: 2px solid #d8f3ff; outline-offset: 3px; }
 #loading {
-  background: #102d51 url('/assets/ui/arena-loading.webp') center / cover no-repeat;
+  /* Fallback base under the :before promo layer (gameplay.css). Same art so a
+     failed pseudo-element still shows the user-supplied photo. */
+  background: #102d51 url('/assets/ui/rocket-league-promo.webp') center / cover no-repeat;
   place-content: center; justify-items: center;
   padding: clamp(24px,6vw,90px); gap: 16px; text-align: center;
   font-family: var(--rl-font);
@@ -106,7 +108,7 @@
 #loading[data-state="error"] .load__label { color: #ffcf89; }
 @media (max-width: 600px) {
   #app .sheet-tab { padding-inline: 8px; font-size: 12px; }
-  #loading { background-position: 60% center; place-content: center; padding-top: 24px; }
+  #loading { background-position: center; place-content: center; padding-top: 24px; }
   #loading .load__title { max-width: 80vw; }
   #loading .load__note { max-width: 80vw; }
   #loading .load__progress-block { width: 76vw; }

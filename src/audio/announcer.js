@@ -85,8 +85,10 @@ export function createAnnouncer(root, { isEnabled = () => getAudioSettings().ann
       if (synth.speaking) synth.cancel();
       const utterance = new SpeechSynthesisUtterance(CLIPS[kind].text);
       utterance.lang = 'en-US';
-      utterance.rate = 1.06;
-      utterance.pitch = 0.55;
+      // Match the bundled clips: very deep, deliberate stadium delivery
+      // (rubberband chain lands the real clips at 79-107 Hz).
+      utterance.rate = 0.9;
+      utterance.pitch = 0.25;
       utterance.volume = VOLUME * 0.8;
       synth.speak(utterance);
     } catch { /* No voice support at all: the banner still shows. */ }
