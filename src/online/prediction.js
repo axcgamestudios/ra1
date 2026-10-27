@@ -97,7 +97,10 @@ export class Prediction {
             return;
         if (previous && snapshot.epoch === previous.epoch && snapshot.tick === previous.tick && snapshot.match.phase === previous.match.phase)
             return;
-        if (previous && now - this.lastReceive > 500) {
+        if (previous && now - this.lastReceive > 900) {
+            // A transport hiccup long enough to distrust the timeline — but
+            // generous: 900 ms rides out SCTP retransmit storms and host frame
+            // jank (goal explosions) without the full resync teleport.
             this.needsResync = true;
             this.timeline.clear();
         }
@@ -212,10 +215,10 @@ export class Prediction {
         const updateStarted = performance.now();
         this.reconcile();
         // Keep driving the local car through brief transport hiccups (packet
-        // retransmissions and congestion-valve pauses): 1000 ms of prediction
+        // retransmissions and congestion-valve pauses): 1400 ms of prediction
         // beats a frozen car. Beyond that the timeline is too stale to trust
         // and the freeze path takes over.
-        const playing = connected && now - this.lastReceive < 1000 && this.latest.match.phase === 'playing';
+        const playing = connected && now - this.lastReceive < 1400 && this.latest.match.phase === 'playing';
         if (playing) {
             this.accumulator += Math.min(elapsed, 100) * this.rate;
             const due = Math.floor(this.accumulator / DT + 1e-9), count = Math.min(12, due);

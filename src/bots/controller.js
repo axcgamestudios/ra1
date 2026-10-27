@@ -11,8 +11,13 @@ function Dc(i) {
 }
 
 class BotController {
-  constructor(e = "nexto") {
+  // `shared` lets several controllers drive multiple bots through ONE ONNX
+  // worker: the worker protocol is multi-tenant (sessions keyed by botId,
+  // messages serialized by id, loads idempotent), so N bots cost one model
+  // load and one worker thread instead of N.
+  constructor(e = "nexto", t = {}) {
     _(this, "worker", null);
+    _(this, "ownsWorker", true);
     _(this, "loading", new Map());
     _(this, "ready", new Set());
     _(this, "pending", new Map());
@@ -23,7 +28,9 @@ class BotController {
     _(this, "adapter");
     _(this, "error", null);
     _(this, "onError", null);
-    ((this.selectedId = e), (this.adapter = Dc(e)));
+    ((this.selectedId = e),
+      (this.adapter = Dc(e)),
+      t.worker && ((this.worker = t.worker), (this.ownsWorker = !1), this.attachSharedListener()));
   }
   get id() {
     return this.selectedId;
@@ -78,20 +85,30 @@ class BotController {
         });
     return (this.loading.set(e, s), s);
   }
+  // Responses on a SHARED worker are delivered to every listener; each
+  // controller keeps its own pending map and silently ignores foreign ids.
+  // (Assigning onmessage instead would let the next shared controller
+  // overwrite it and quietly break every bot but the first.)
+  attachSharedListener() {
+    this.sharedListener = ({ data: t }) => this.handleWorkerMessage(t);
+    this.worker.addEventListener("message", this.sharedListener);
+  }
+  handleWorkerMessage(t) {
+    const n = this.pending.get(t.id);
+    n &&
+      (window.clearTimeout(n.timer),
+          this.pending.delete(t.id),
+          t.kind === "error" ? n.reject(new Error(t.error)) : n.resolve(t));
+  }
   createWorker() {
     const e = new Worker(
       new URL("/assets/worker-iFqqV1m9.js", import.meta.url),
       { type: "module" },
     );
+    this.ownsWorker = !0;
     return (
       (this.worker = e),
-      (e.onmessage = ({ data: t }) => {
-        const n = this.pending.get(t.id);
-        n &&
-          (window.clearTimeout(n.timer),
-          this.pending.delete(t.id),
-          t.kind === "error" ? n.reject(new Error(t.error)) : n.resolve(t));
-      }),
+      (e.onmessage = ({ data: t }) => this.handleWorkerMessage(t)),
       (e.onerror = (t) =>
         this.fail(
           new Error(t.message || "The bot worker stopped unexpectedly."),
@@ -134,7 +151,10 @@ class BotController {
   dispose() {
     var e;
     (this.reset(),
-      (e = this.worker) == null || e.terminate(),
+      this.sharedListener &&
+        (this.worker?.removeEventListener("message", this.sharedListener),
+          (this.sharedListener = null)),
+      this.ownsWorker && (e = this.worker) != null && e.terminate(),
       (this.worker = null),
       this.ready.clear(),
       this.loading.clear());

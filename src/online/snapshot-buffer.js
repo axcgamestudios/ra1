@@ -56,10 +56,12 @@ export class SnapshotBuffer {
         const desired = newest.time + Math.max(0, now - newest.arrival) - this.delayMs;
         if (this.playhead === null)
             this.playhead = desired;
-        else if (desired - this.playhead > Math.max(400, this.delayMs + 150)
+        else if (desired - this.playhead > Math.max(550, this.delayMs + 250)
             || this.playhead < this.samples[0].time - this.delayMs) {
             // Suspension/alt-tab recovery is an explicit rebase, not a hidden
-            // many-second slowdown. Ordinary jitter still uses monotonic slew.
+            // many-second slowdown. Ordinary jitter still uses monotonic slew;
+            // the threshold is generous so a post-congestion burst of delayed
+            // snapshots slews forward instead of snapping (teleporting).
             this.playhead = Math.min(newest.time, desired); this.rebases++;
         }
         else {

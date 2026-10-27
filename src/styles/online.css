@@ -77,6 +77,32 @@
 #app .online-mode[disabled] { opacity:.45;cursor:default; }
 #app .online-private-roster .online-empty-slot { border-left:3px dashed #326484;color:#6d9ab3;font-style:italic;background:#04121f; }
 
+/* ------------------------------------------- lobby side picks + bot fill ---- */
+#app .online-team-picker { display:flex;align-items:center;gap:8px;margin:2px 0 4px; }
+#app .online-team { min-height:34px;min-width:86px;font-size:13px;font-weight:700;letter-spacing:.08em;
+  background:#062033;border:1px solid #326484;color:#cfe9f6;border-radius:6px;cursor:pointer; }
+#app .online-team:hover:not([disabled]) { border-color:#67b6d8; }
+#app .online-team-blue.is-active { background:#0b5d8c;border-color:#8fd7f2;color:#fff;
+  box-shadow:0 0 0 1px #8fd7f2,0 6px 18px #0b5d8c66; }
+#app .online-team-orange.is-active { background:#8c4a0b;border-color:#f2c48f;color:#fff;
+  box-shadow:0 0 0 1px #f2c48f,0 6px 18px #8c4a0b66; }
+#app .online-team[disabled] { opacity:.45;cursor:default; }
+#app .online-bot-fill { display:flex;align-items:center;gap:8px;margin:6px 0 2px;flex-wrap:wrap; }
+#app .online-bot-add { min-height:34px;padding:0 12px;font-size:12px;font-weight:700;letter-spacing:.06em;
+  background:#062033;border:1px solid #326484;color:#cfe9f6;border-radius:6px;cursor:pointer; }
+#app .online-bot-add:hover:not([disabled]) { border-color:#67b6d8; }
+#app .online-bot-add.online-team-blue { border-color:#2a7ba6;color:#9fdcff; }
+#app .online-bot-add.online-team-orange { border-color:#a67440;color:#ffd6a4; }
+#app .online-bot-add[disabled] { opacity:.45;cursor:default; }
+#app .online-bot-kind { display:flex;align-items:center;gap:6px; }
+#app .online-bot-kind select { min-height:34px;background:#062033;color:#cfe9f6;border:1px solid #326484;
+  border-radius:6px;padding:0 8px;font-size:12px;font-weight:600;letter-spacing:.04em; }
+#app .online-bot-remove { margin-left:auto;height:24px;padding:0 8px;font-size:10px;font-weight:700;letter-spacing:.1em;
+  background:#3a0d12;border:1px solid #a33;color:#ffb9b9;border-radius:5px;cursor:pointer; }
+#app .online-bot-remove:hover { background:#571318;border-color:#e06a6a;color:#fff; }
+#app .online-private-roster .online-bot-row { display:flex;align-items:center;gap:8px; }
+@media(max-width:640px) { #app .online-bot-fill { gap:6px; } #app .online-bot-add { flex:1 1 40%; } }
+
 /* ------------------------------------------------------- announcer banner ---- */
 /* Rocket League style: skewed slab text with a vertical gradient fill, a
    bright rim, a hard drop shadow and an angled accent bar that sweeps in.

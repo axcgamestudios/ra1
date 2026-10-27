@@ -18,6 +18,14 @@ import { STATE_LAYOUT } from '../physics/state-layout.js';
 
 const COMMAND_TICKS = SIM_HZ / INPUT_HZ;
 const STALL_MS = 10000;
+// Adaptive cadence health thresholds (SCTP bufferedAmount per data channel):
+// sustained pressure above 12 KB means the link cannot carry the current
+// snapshot rate, so the host halves the rate before delay compounds; below
+// 2 KB for four straight seconds the rate steps back up.
+const CADENCE_PRESSURE_BYTES = 12288;
+const CADENCE_RECOVER_BYTES = 2048;
+const CADENCE_RECOVER_MS = 4000;
+const CADENCE_STRIKES = 3;
 
 // The HOST assigns command duration, exactly like the dedicated server did:
 // sending more commands can never buy simulation time, and a short startup
@@ -98,7 +106,7 @@ export class InputStream {
 // team matches pass guests: Map(slot -> { send(payload), congested? }) so each
 // data channel gets its own congestion valve.
 export class HostRoom {
-    constructor({ sim, match, players, send, guests, onEvent, congested, events, snapshotHz = SNAPSHOT_HZ }) {
+    constructor({ sim, match, players, send, guests, onEvent, congested, events, snapshotHz = SNAPSHOT_HZ, bots = null }) {
         this.sim = sim;
         this.match = match;
         this.players = players;
@@ -109,26 +117,39 @@ export class HostRoom {
         // latency stops compounding; the next snapshot carries the full state.
         // Thresholds live with the channel construction in p2p.js.
         this.congested = congested ?? (() => false);
-        this.guestSlots = players.slice(1).map((_, index) => index + 1);
+        // Bot slots (host-driven cars): roster entries flagged bot:true. Guests
+        // keep their input streams; bots are driven by the HostBots driver.
+        this.botDriver = bots ?? null;
+        this.botSlots = new Set(players.map((player, index) => player?.bot && index > 0 ? index : -1).filter(index => index > 0));
+        this.slots = players.map((_, index) => index).slice(1);
+        this.guestSlots = this.slots.filter(slot => !this.botSlots.has(slot));
         this.guests = new Map();
         if (guests) {
             for (const [slot, channel] of guests) this.guests.set(slot, channel);
         } else if (send) {
             this.guests.set(1, { send, congested: this.congested });
         }
-        this.streams = new Map(this.guestSlots.map(slot => [slot, new InputStream({ staleMs: 2000 })]));
+        this.streams = new Map(this.guestSlots.map(slot => [slot, new InputStream({ staleMs: 900 })]));
         this.lastGuestInput = new Map(this.guestSlots.map(slot => [slot, -Infinity]));
         this.nativeCheckpoints = sim.module._physics_netStateVersion?.() === 1;
         this.checkpointEvery = this.guestSlots.length > 1 ? 12 : 6;
-        // Mode-aware cadence: 1v1 60 Hz, 2v2 40 Hz, 3v3 30 Hz.
-        this.snapshotEvery = Math.max(1, Math.round(SIM_HZ / Math.min(SNAPSHOT_HZ, Math.max(20, snapshotHz))));
+        // Mode-aware cadence (1v1 60 Hz, 2v2 40 Hz, 3v3 30 Hz) with ADAPTIVE
+        // downshift tiers: a link that cannot carry the base rate gets half,
+        // then 15 Hz, instead of queueing snapshots into delay. Guests
+        // interpolate, so a lower rate reads as smooth-late, never teleport.
+        const base = Math.max(15, Math.min(SNAPSHOT_HZ, Math.max(20, snapshotHz)));
+        this.cadenceTiers = [...new Set([base, Math.max(20, Math.round(base / 2)), 15])].sort((a, b) => b - a);
+        this.cadenceIndex = 0;
+        this.snapshotEvery = Math.max(1, Math.round(SIM_HZ / this.cadenceTiers[0]));
+        this.cadenceStrikes = 0;
+        this.cadenceHealthySince = 0;
         this.snapshotDue = false;
         this.snapshotWantsCheckpoint = false;
         this.active = false;
         this.terminal = false;
         this.tick = 0;
         this.epoch = 0;
-        this.acks = this.guestSlots.map(() => 0);
+        this.acks = this.slots.map(() => 0);
         this.result = null;
         this.localControls = [...NEUTRAL];
         this.hostSeq = 0;
@@ -187,11 +208,12 @@ export class HostRoom {
         this.sim.resetKickoff(-1);
         this.epoch++;
         for (const stream of this.streams.values()) stream.clear();
-        this.acks = this.guestSlots.map(slot => this.streams.get(slot).seq);
+        this.acks = this.slots.map(slot => this.botSlots.has(slot) ? 0 : this.streams.get(slot).seq);
         this.hostSeq = 0;
         this.hostTicks = COMMAND_TICKS;
         this.hostControls = [...NEUTRAL];
         for (let slot = 0; slot < this.players.length; slot++) this.applyControls(slot, NEUTRAL);
+        this.botDriver?.onReset();
     }
     // One authoritative 120 Hz tick. Returns false only when the caller should
     // stop the current catch-up batch (never for regular play).
@@ -201,11 +223,16 @@ export class HostRoom {
         const state = this.match.state;
         if (state.phase === 'playing') {
             this.applyControls(0, this.localControls);
-            for (const slot of this.guestSlots) {
-                const stalled = now - this.lastGuestInput.get(slot) > STALL_MS;
-                this.applyControls(slot, stalled ? NEUTRAL : this.streams.get(slot).step(now));
+            for (const slot of this.slots) {
+                if (this.botSlots.has(slot)) {
+                    const controls = this.botDriver?.tick(slot, this.sim);
+                    if (controls) this.applyControls(slot, controls);
+                } else {
+                    const stalled = now - this.lastGuestInput.get(slot) > STALL_MS;
+                    this.applyControls(slot, stalled ? NEUTRAL : this.streams.get(slot).step(now));
+                }
             }
-            this.acks = this.guestSlots.map(slot => this.streams.get(slot).seq);
+            this.acks = this.slots.map(slot => this.botSlots.has(slot) ? 0 : this.streams.get(slot).seq);
             if (this.hostTicks >= COMMAND_TICKS) {
                 this.hostSeq++;
                 this.hostControls = [...this.localControls];
@@ -243,12 +270,49 @@ export class HostRoom {
     // Called once per host frame after the physics batch: sends at most ONE
     // snapshot (the freshest state). Checkpoint cadence rides the flush count.
     flushSnapshots() {
-        if (!this.snapshotDue) return;
-        const checkpoint = this.snapshotWantsCheckpoint;
-        this.snapshotDue = false;
-        this.snapshotWantsCheckpoint = false;
-        this.sendSnapshot(checkpoint);
+        if (this.snapshotDue) {
+            const checkpoint = this.snapshotWantsCheckpoint;
+            this.snapshotDue = false;
+            this.snapshotWantsCheckpoint = false;
+            this.sendSnapshot(checkpoint);
+        }
+        this.updateCadence();
     }
+    // Adaptive snapshot rate: sustained send-buffer pressure halves the rate
+    // (before latency compounds into the teleporting players report), and a
+    // link that stays drained for four seconds earns the next tier back.
+    updateCadence(now = performance.now()) {
+        if (!this.guests.size) return;
+        const queued = this.maxQueuedBytes();
+        if (queued > CADENCE_PRESSURE_BYTES) {
+            this.cadenceStrikes++;
+            this.cadenceHealthySince = 0;
+            if (this.cadenceStrikes >= CADENCE_STRIKES && this.cadenceIndex < this.cadenceTiers.length - 1) {
+                this.cadenceIndex++;
+                this.cadenceStrikes = 0;
+                this.applyCadence();
+            }
+        } else {
+            this.cadenceStrikes = 0;
+            if (queued < CADENCE_RECOVER_BYTES) {
+                if (!this.cadenceHealthySince) this.cadenceHealthySince = now;
+                if (this.cadenceIndex > 0 && now - this.cadenceHealthySince > CADENCE_RECOVER_MS) {
+                    this.cadenceIndex--;
+                    this.cadenceHealthySince = 0;
+                    this.applyCadence();
+                }
+            } else this.cadenceHealthySince = 0;
+        }
+    }
+    maxQueuedBytes() {
+        let worst = 0;
+        for (const channel of this.guests.values()) worst = Math.max(worst, channel.queued?.() ?? 0);
+        return worst;
+    }
+    applyCadence() {
+        this.snapshotEvery = Math.max(1, Math.round(SIM_HZ / this.cadenceTiers[this.cadenceIndex]));
+    }
+    get snapshotHz() { return this.cadenceTiers[this.cadenceIndex]; }
     afterGoal() {
         this.resetArena();
         this.onEvent?.({ type: 'kickoff' });
@@ -262,8 +326,17 @@ export class HostRoom {
             state: this.sim.state,
             match: this.match.state,
             acknowledgements: [this.hostSeq, ...this.acks],
-            inputStates: [this.hostMeta(), ...this.guestSlots.map(slot => this.streams.get(slot).metadata())]
+            inputStates: [this.hostMeta(), ...this.slots.map(slot => this.botSlots.has(slot) ? this.botMeta(slot) : this.streams.get(slot).metadata())]
         };
+    }
+    botMeta(slot) {
+        return { seq: 0, ticks: COMMAND_TICKS, queued: 0, idle: 0, controls: this.botDriver?.controlsArrayAt(slot) ?? NEUTRAL };
+    }
+    // Controls of every non-host car (guest streams and bots alike) in wire
+    // order — the host uses them for remote boost flames and audio.
+    remoteControlsArray(slot) {
+        if (this.botSlots.has(slot)) return this.botDriver?.controlsArrayAt(slot) ?? NEUTRAL;
+        return this.guestControlsArray(slot);
     }
     hostMeta() {
         return { seq: this.hostSeq, ticks: Math.min(this.hostTicks, COMMAND_TICKS), queued: 2, idle: 0, controls: this.hostControls };

@@ -78,6 +78,28 @@ export function createAnnouncer(root, { isEnabled = () => getAudioSettings().ann
     }
   }
 
+  // Best available deep English voice for the speechSynthesis fallback (used
+  // only when the bundled clips cannot load). System TTS varies wildly; prefer
+  // known deep male voices, then any male English voice, then any en voice.
+  let fallbackVoice = null, fallbackVoiceScanned = false;
+  try {
+    // Voice lists populate asynchronously in most browsers: rescan when ready.
+    window.speechSynthesis?.addEventListener?.('voiceschanged', () => { fallbackVoiceScanned = false; });
+  } catch { /* older browsers: the first scan is the best we get */ }
+  function pickFallbackVoice(synth) {
+    if (fallbackVoiceScanned) return fallbackVoice;
+    fallbackVoiceScanned = true;
+    try {
+      const voices = synth.getVoices?.() ?? [];
+      const english = voices.filter(voice => /^en(-|_|$)/i.test(voice.lang || ''));
+      const pool = english.length ? english : voices;
+      const deep = pool.find(voice => /^(microsoft guy|google uk english male|microsoft ryan|microsoft george|microsoft david|daniel|alex|fred|male)$/i.test(voice.name || ''))
+        ?? pool.find(voice => /male|guy|david|daniel|george|ryan|alex|fred|jorge|diego/i.test(voice.name || ''));
+      fallbackVoice = deep ?? pool[0] ?? null;
+    } catch { fallbackVoice = null; }
+    return fallbackVoice;
+  }
+
   function speakFallback(kind) {
     try {
       const synth = window.speechSynthesis;
@@ -85,10 +107,12 @@ export function createAnnouncer(root, { isEnabled = () => getAudioSettings().ann
       if (synth.speaking) synth.cancel();
       const utterance = new SpeechSynthesisUtterance(CLIPS[kind].text);
       utterance.lang = 'en-US';
+      const voice = pickFallbackVoice(synth);
+      if (voice) { utterance.voice = voice; utterance.lang = voice.lang || 'en-US'; }
       // Match the bundled clips: very deep, deliberate stadium delivery
-      // (rubberband chain lands the real clips at 79-107 Hz).
-      utterance.rate = 0.9;
-      utterance.pitch = 0.25;
+      // (rubberband chain lands the real clips at ~80-105 Hz).
+      utterance.rate = 0.88;
+      utterance.pitch = 0.2;
       utterance.volume = VOLUME * 0.8;
       synth.speak(utterance);
     } catch { /* No voice support at all: the banner still shows. */ }

@@ -11,12 +11,14 @@
 // to every guest.
 import { Peer } from '../vendor/peerjs.mjs';
 import { HostRoom } from './p2p-room.js';
+import { HostBots } from './host-bots.js';
 import { Prediction } from './prediction.js';
 import { MatchEvents } from '../match/match-events.js';
 import { victoryContent } from '../ui/victory-screen.js';
 import { controlsArray, decodeSnapshot, validName, NEUTRAL, PROTOCOL, PHYSICS_SHA256 } from './protocol.js';
 import { NETWORK_CORE_SHA256 } from '../physics/network-core.js';
 import { Ks } from '../input/controller-selection.js';
+import { JA, pl as BOT_CATALOG } from '../bots/catalog.js';
 
 const ID_PREFIX = 'ra1-v1-';
 const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
@@ -29,18 +31,23 @@ const NAME_KEY = 'arena.p2p.name';
 // snapshots; guests interpolate anyway, so lower cadence trades nothing the
 // player can see for a large drop in queueing delay.
 const SNAPSHOT_HZ_BY_MODE = { '1v1': 60, '2v2': 40, '3v3': 30 };
-// Congestion valve threshold (SCTP bufferedAmount). 8 KB tripped on ordinary
-// bursts and starved guests into prediction freezes; 32 KB only engages when
-// the link is genuinely falling minutes behind on team rosters.
-const CONGESTION_BYTES = 32768;
+// Congestion valve threshold (SCTP bufferedAmount). 32 KB only engaged when
+// the link was already seconds behind; 16 KB engages while the delay is
+// still recoverable, and the host's adaptive cadence downshifts the snapshot
+// rate long before this valve has to drop snapshots at all.
+const CONGESTION_BYTES = 16384;
+// Duplicate-input copies are pure overhead once a link strains: skip them
+// much earlier than full congestion.
+const INPUT_DUP_BYTES = 8192;
 // Paint fields that travel with each player so every car wears its owner's
 // garage colors instead of the viewer's local garage paint.
 const PAINT_KEYS = ['primary', 'pearl', 'boostColor', 'roughness', 'metalness', 'clearcoat',
   'decal', 'decalColor', 'decalScale'];
 const DECAL_CHOICES = ['none', 'stripes', 'twin', 'hex', 'camo', 'checker', 'split', 'flames', 'circuit', 'wrap'];
-// Message flow version: 2 = lobby + welcome-at-START (team rosters). Clients
-// with a different flow cannot understand each other's lobby messages.
-const FLOW = 2;
+// Message flow version: 3 = lobby + welcome-at-START (team rosters) + team
+// picks and host bot fill. Clients with a different flow cannot understand
+// each other's lobby messages.
+const FLOW = 3;
 const MODES = Object.freeze({ '1v1': 1, '2v2': 2, '3v3': 3 });
 const GUEST_CAPACITY = { '1v1': 1, '2v2': 3, '3v3': 5 };
 
@@ -145,6 +152,9 @@ export function mountP2P(root, hooks) {
   let pingTimer = 0, readyTimer = 0, statsTimer = 0, poll = 0, lastNetworkDisplay = 0;
   let oldButtons = [], lastDirection = 0, roster = null, matchEvents = null, matchStats = null;
   let lobbyReadySent = false;
+  // Host-side bot fill: one shared ONNX worker drives every bot the host adds.
+  let hostBots = null, botLoadTimer = 0;
+  let selectedBotId = 'nexto';
   // Host-side guest book: wire slot -> { conn, name, visual, ready, hello }.
   let guests = new Map();
   // Guest-side identity: wire slot of this player and the local render order.
@@ -169,7 +179,7 @@ export function mountP2P(root, hooks) {
       </div>
       <p class="online-status" role="status" aria-live="polite">Create a room and share the code, or join a friend's room.</p>
       <div class="online-private-options"><button type="button" data-p2p="create" class="online-primary">CREATE ROOM</button><label class="online-name">ROOM CODE<input name="roomCode" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="5" placeholder="5-letter code"></label><button type="button" data-p2p="join">JOIN ROOM</button></div>
-      <section class="online-private-lobby" hidden aria-label="Peer-to-peer room"><div class="online-invite"><span>ROOM CODE</span><output data-room-code></output><button type="button" data-p2p="copy">COPY CODE</button></div><p data-lobby-note>Peer-to-peer casual · The host runs the authoritative arena in their browser.</p><div class="online-private-roster"></div><div class="online-actions"><button type="button" data-p2p="start" class="online-primary">START MATCH</button><button type="button" data-p2p="leave-room">LEAVE ROOM</button></div></section>
+      <section class="online-private-lobby" hidden aria-label="Peer-to-peer room"><div class="online-invite"><span>ROOM CODE</span><output data-room-code></output><button type="button" data-p2p="copy">COPY CODE</button></div><p data-lobby-note>Peer-to-peer casual · The host runs the authoritative arena in their browser.</p><div class="online-team-picker" role="radiogroup" aria-label="Your team"><span class="online-mode-label">YOUR TEAM</span><button type="button" data-team="0" class="online-team online-team-blue">BLUE</button><button type="button" data-team="1" class="online-team online-team-orange">ORANGE</button></div><div class="online-private-roster"></div><div class="online-bot-fill" hidden><span class="online-mode-label">FILL WITH BOTS</span><button type="button" data-bot="0" class="online-bot-add online-team-blue">+ BOT · BLUE</button><button type="button" data-bot="1" class="online-bot-add online-team-orange">+ BOT · ORANGE</button><label class="online-bot-kind"><span class="online-mode-label">BOT</span><select data-bot-id aria-label="Bot type"><option value="nexto" selected>NEXTO · GC</option><option value="necto">NECTO · DIAMOND</option><option value="seer">SEER · PLAT</option></select></label></div><div class="online-actions"><button type="button" data-p2p="start" class="online-primary">START MATCH</button><button type="button" data-p2p="leave-room">LEAVE ROOM</button></div></section>
       <div class="online-results" hidden></div>
       <div class="online-actions"><button type="button" data-p2p="again" class="online-primary" hidden>PLAY AGAIN</button><button type="button" data-p2p="bots">PLAY BOTS OFFLINE</button></div>
       <p class="online-account-help">All players must use the default (experimental) physics. Controls match Rocket League: W/S throttle, A/D steer, Left Click boost, Right Click jump, Shift powerslide/air roll, Space ball cam.</p>
@@ -218,6 +228,15 @@ export function mountP2P(root, hooks) {
   });
 
   function lobbyCapacity() { return GUEST_CAPACITY[mode] ?? 1; }
+  function teamSize(team) { return (roster ?? []).filter(player => player.team === team).length; }
+  function teamCap() { return MODES[mode] ?? 1; }
+  function teamsValid() {
+    const blue = teamSize(0), orange = teamSize(1);
+    return blue >= 1 && orange >= 1 && blue <= teamCap() && orange <= teamCap();
+  }
+  function botCount() { return (roster ?? []).filter(player => player.bot).length; }
+  function botsReady() { return !hostBots || hostBots.ready; }
+  function botsLoading() { return !!hostBots && hostBots.loadingCount > 0; }
   function allGuestsReady() { return guests.size > 0 && [...guests.values()].every(entry => entry.ready); }
   function allGuestsPrepared() { return guests.size > 0 && [...guests.values()].every(entry => entry.prepared); }
 
@@ -239,28 +258,63 @@ export function mountP2P(root, hooks) {
     find('.online-private-lobby').hidden = !inLobby;
     find('[data-p2p="again"]').hidden = !lastResult;
     find('[data-p2p="start"]').hidden = role !== 'host';
-    find('[data-p2p="start"]').disabled = !(role === 'host' && allGuestsReady() && !starting && !room?.active && !room?.terminal);
+    const canStart = role === 'host' && !starting && !room?.active && !room?.terminal
+      && (guests.size > 0 || botCount() > 0) && allGuestsReady() && teamsValid() && botsReady();
+    find('[data-p2p="start"]').disabled = !canStart;
     find('[data-p2p="leave-room"]').disabled = preparing && !role;
     if (inLobby) {
       find('[data-room-code]').textContent = code;
-      find('[data-lobby-note]').textContent = role === 'host'
-        ? `${mode} · ${guests.size}/${lobbyCapacity()} players joined · host runs the authoritative arena`
-        : `Waiting for the host to start${mode !== '1v1' ? ` · ${mode}` : ''}`;
+      const note = find('[data-lobby-note]');
+      if (role === 'host') {
+        const bits = [`${mode} · ${(roster ?? []).length}/${teamCap() * 2} cars`];
+        if (!teamsValid()) {
+          const blue = teamSize(0), orange = teamSize(1);
+          bits.push(blue === 0 ? 'BLUE needs a player or a bot' : orange === 0 ? 'ORANGE needs a player or a bot'
+            : blue > teamCap() ? 'BLUE is overfull' : 'ORANGE is overfull');
+        } else if (!allGuestsReady() && guests.size) bits.push('waiting for players to load');
+        else if (botsLoading()) bits.push('bots loading…');
+        else if (!botsReady()) bits.push('a bot failed to load — remove it');
+        else bits.push('ready to start');
+        note.textContent = bits.join(' · ');
+      } else {
+        note.textContent = `Waiting for the host to start · ${mode} · pick your team above`;
+      }
+      // Team picker: everyone chooses a side; a full team is locked.
+      const ownSlot = role === 'host' ? 0 : selfSlot;
+      const ownTeam = roster?.[ownSlot]?.team ?? 0;
+      for (const button of panel.querySelectorAll('[data-team]')) {
+        const team = Number(button.dataset.team);
+        const full = team !== ownTeam && teamSize(team) >= teamCap();
+        button.disabled = !!lastResult || starting || !!room || full;
+        button.classList.toggle('is-active', team === ownTeam);
+        button.setAttribute('aria-pressed', String(team === ownTeam));
+        if (full) button.title = 'That team is full'; else button.title = '';
+      }
       const list = find('.online-private-roster'); list.replaceChildren();
       for (const player of roster ?? []) {
         const row = document.createElement('p');
         row.className = player.team === 0 ? 'blue-team' : 'orange-team';
+        if (player.bot) row.classList.add('online-bot-row');
         const side = player.team === 0 ? 'BLUE' : 'ORANGE';
         const you = player.id === 'host' || player.host ? (role === 'host' ? ' · YOU' : '') : (role === 'guest' && player.slot === selfSlot ? ' · YOU' : '');
-        const ready = player.id === 'host' || player.host ? ' · READY' : (guests.get(player.slot)?.ready ? ' · READY' : ' · LOADING…');
-        row.textContent = `${side} · ${player.name}${you}${ready}`;
+        const ready = player.bot ? ' · BOT' : player.id === 'host' || player.host ? ' · READY' : (guests.get(player.slot)?.ready ? ' · READY' : ' · LOADING…');
+        row.append(`${side} · ${player.name}${you}${ready}`);
+        if (role === 'host' && player.bot && !starting && !room) {
+          const remove = document.createElement('button');
+          remove.type = 'button';
+          remove.className = 'online-bot-remove';
+          remove.dataset.removeBot = player.id;
+          remove.textContent = 'REMOVE';
+          remove.setAttribute('aria-label', `Remove ${player.name}`);
+          row.append(remove);
+        }
         list.append(row);
       }
       if (role === 'host') {
-        for (let extra = (roster?.length ?? 1); extra < lobbyCapacity() + 1; extra++) {
+        for (let extra = (roster?.length ?? 1); extra < teamCap() * 2; extra++) {
           const waiting = document.createElement('p');
           waiting.className = 'online-empty-slot';
-          waiting.textContent = extra % 2 === 0 ? 'BLUE · open slot — share the code' : 'ORANGE · open slot — share the code';
+          waiting.textContent = extra % 2 === 0 ? 'BLUE · open slot — share the code or add a bot' : 'ORANGE · open slot — share the code or add a bot';
           list.append(waiting);
         }
       } else if (!roster) {
@@ -268,6 +322,15 @@ export function mountP2P(root, hooks) {
         waiting.className = 'blue-team';
         waiting.textContent = 'BLUE · Waiting for the host…';
         list.append(waiting);
+      }
+      // Host-only bot fill row.
+      const botFill = find('.online-bot-fill');
+      botFill.hidden = role !== 'host';
+      if (role === 'host') {
+        for (const button of panel.querySelectorAll('[data-bot]')) {
+          const team = Number(button.dataset.bot);
+          button.disabled = starting || !!room || teamSize(team) >= teamCap();
+        }
       }
     }
   }
@@ -288,6 +351,8 @@ export function mountP2P(root, hooks) {
     clearInterval(pingTimer); pingTimer = 0;
     clearTimeout(readyTimer); readyTimer = 0;
     clearInterval(statsTimer); statsTimer = 0;
+    clearInterval(botLoadTimer); botLoadTimer = 0;
+    hostBots?.dispose(); hostBots = null;
     for (const entry of guests.values()) { try { entry.conn.close(); } catch {} }
     guests.clear();
     try { conn?.close(); } catch {}
@@ -302,7 +367,9 @@ export function mountP2P(root, hooks) {
     if (!name) return;
     role = 'host'; roomReady = false; hostName = name; hostPrepared = false; starting = false;
     guests = new Map(); hostRtts = new Map();
-    roster = [{ id: 'host', name, team: 0, visual: hooks.visual(), paint: sanitizePaint(hooks.paint?.()) ?? null }];
+    // Wire slots are roster array positions: the host is always slot 0 and
+    // carries the field so side picks / re-indexing treat it like any player.
+    roster = [{ id: 'host', slot: 0, name, team: 0, visual: hooks.visual(), paint: sanitizePaint(hooks.paint?.()) ?? null }];
     controls(); setStatus('Creating your room on the signaling server…');
     code = generateCode();
     peer = new Peer(ID_PREFIX + code, PEER_OPTIONS);
@@ -328,7 +395,7 @@ export function mountP2P(root, hooks) {
         connection.on('open', () => { sendPayload(connection, { type: 'cancelled', reason: 'match_in_progress' }); setTimeout(() => { try { connection.close(); } catch {} }, 250); });
         return;
       }
-      if (guests.size >= lobbyCapacity()) {
+      if ((roster?.length ?? 1) >= teamCap() * 2) {
         connection.on('open', () => { sendPayload(connection, { type: 'cancelled', reason: 'room_full' }); setTimeout(() => { try { connection.close(); } catch {} }, 250); });
         return;
       }
@@ -373,16 +440,18 @@ export function mountP2P(root, hooks) {
     entry.name = message.name;
     entry.visual = typeof message.visual === 'string' ? message.visual : 'octane-original';
     entry.paint = sanitizePaint(message.paint);
-    roster = [...roster, { id: 'guest' + slot, slot, name: entry.name, team: balancedTeam(roster), visual: entry.visual, paint: entry.paint }];
+    const player = { id: 'guest' + slot, slot, name: entry.name, team: balancedTeam(roster), visual: entry.visual, paint: entry.paint };
+    entry.playerRef = player;
+    roster = [...roster, player];
     guests.set(slot, entry);
-    setStatus(`${entry.name} joined (${roster.length}/${lobbyCapacity() + 1} players). Waiting for everyone to be ready.`);
+    setStatus(`${entry.name} joined (${roster.length}/${teamCap() * 2} cars). Waiting for everyone to be ready.`);
     // Everyone already in the lobby hears about the new player.
     broadcastToGuests({ type: 'lobby', roster: publicRoster(), mode });
     controls();
   }
 
   function publicRoster() {
-    return (roster ?? []).map((player, slot) => ({ name: player.name, team: player.team, slot, host: player.id === 'host' || slot === 0, disconnected: player.disconnected ?? false }));
+    return (roster ?? []).map((player, slot) => ({ name: player.name, team: player.team, slot, host: player.id === 'host' || slot === 0, bot: !!player.bot, disconnected: player.disconnected ?? false }));
   }
 
   function broadcastToGuests(payload) {
@@ -399,6 +468,9 @@ export function mountP2P(root, hooks) {
         ? 'Everyone is in the lobby. Press START MATCH when you want to begin.'
         : `${entry.name} is ready. Waiting for the remaining players…`);
       controls();
+    } else if (message.type === 'team') {
+      // Lobby side pick: the guest chooses BLUE or ORANGE (2v2/3v3).
+      if (!room && !starting && (message.team === 0 || message.team === 1)) setPlayerTeam(entry.slot, message.team);
     } else if (message.type === 'prepared') {
       // Arena loaded after the welcome; kickoff waits for this.
       entry.prepared = true;
@@ -423,8 +495,14 @@ export function mountP2P(root, hooks) {
     guests.delete(entry.slot);
     hostRtts.delete(entry.slot);
     if (!room?.active && !starting) {
-      // Lobby departure: free the slot and tell the remaining guests.
-      roster = roster.filter(player => player.slot !== entry.slot);
+      // Lobby departure: free the slot, re-index so wire slots stay equal to
+      // roster positions (the sim addresses cars by array index), and tell the
+      // remaining guests. Without the re-index a later joiner would collide
+      // with a stale slot and that guest's inputs would never reach the sim.
+      const kept = roster.filter(player => player !== entry.playerRef && player.slot !== entry.slot);
+      roster = reindexRoster(kept);
+      refreshGuestSlots();
+      hostBots?.sync(roster);
       broadcastToGuests({ type: 'lobby', roster: publicRoster(), mode });
       setStatus(`${entry.name || 'A player'} left the lobby. ${guests.size ? 'Share the code to fill the slot.' : 'Waiting for players to join.'}`);
       controls();
@@ -435,11 +513,123 @@ export function mountP2P(root, hooks) {
       const player = roster.find(candidate => candidate.slot === entry.slot);
       if (player) player.disconnected = true;
       broadcastToGuests({ type: 'lobby', roster: publicRoster(), mode });
-      if (guests.size === 0) room.finish(0, reason === 'left_match' ? 'opponent_left' : 'opponent_stalled');
+      if (guests.size === 0 && botCount() === 0) room.finish(0, reason === 'left_match' ? 'opponent_left' : 'opponent_stalled');
       else setStatus(`${entry.name} left the match. The remaining players keep playing.`);
     }
     readyWaiter?.();
     controls();
+  }
+
+  // Wire slots are roster array positions; re-index after any removal. Slots
+  // are mutated in place so guest book `playerRef` pointers stay valid.
+  function reindexRoster(players) {
+    for (let index = 0; index < players.length; index++) players[index].slot = index;
+    return players;
+  }
+  // The guest book is keyed by wire slot: after a re-index the keys must
+  // follow the entries, or inputs/snapshots would target the wrong car.
+  function rekeyGuests() {
+    const rekeyed = new Map();
+    for (const entry of guests.values()) rekeyed.set(entry.slot, entry);
+    guests = rekeyed;
+  }
+  // Refresh every guest entry's slot from its roster object, then re-key the
+  // book. Call after ANY roster mutation that changes array positions.
+  function refreshGuestSlots() {
+    for (const other of guests.values()) {
+      const moved = (roster ?? []).find(candidate => candidate === other.playerRef);
+      if (moved) other.slot = moved.slot;
+    }
+    rekeyGuests();
+  }
+
+  // ---------------------------------------------------------------- teams ----
+  // Host authority for side picks: validates the target team is not full and
+  // rebroadcasts the lobby so everyone sees the new layout.
+  function setPlayerTeam(slot, team) {
+    if (role !== 'host' || starting || room) return;
+    const player = (roster ?? []).find(candidate => candidate.slot === slot);
+    if (!player || player.team === team) { controls(); return; }
+    if (teamSize(team) >= teamCap()) { setStatus(`That team is full (${teamCap()} of ${teamCap()}).`); controls(); return; }
+    player.team = team;
+    broadcastToGuests({ type: 'lobby', roster: publicRoster(), mode });
+    controls();
+  }
+
+  function uniqueBotName(base) {
+    const names = new Set((roster ?? []).map(player => player.name));
+    if (!names.has(base)) return base;
+    for (let n = 2; n < 12; n++) if (!names.has(`${base} ${n}`)) return `${base} ${n}`;
+    return `${base} ${roster.length}`;
+  }
+
+  function ensureHostBots() {
+    if (!hostBots) hostBots = new HostBots();
+    // Keep the lobby live while policies download: START unlocks the moment
+    // every bot's model is ready.
+    clearInterval(botLoadTimer);
+    botLoadTimer = setInterval(() => {
+      if (!hostBots || hostBots.ready || role !== 'host') { clearInterval(botLoadTimer); botLoadTimer = 0; }
+      if (role === 'host' && !panel.hidden) controls();
+    }, 500);
+    return hostBots;
+  }
+
+  function addBot(team) {
+    if (role !== 'host' || starting || room) return;
+    if (teamSize(team) >= teamCap()) { setStatus(`That team is full — remove a car or switch modes.`); return; }
+    const bots = ensureHostBots();
+    const info = JA(selectedBotId) ?? BOT_CATALOG[0];
+    const slot = roster.length;
+    const id = 'bot' + slot + '-' + Math.random().toString(36).slice(2, 6);
+    roster = [...roster, { id, slot, name: uniqueBotName(info.name), team, visual: info.carVisual, bot: true, botId: info.id }];
+    bots.add(id, { botId: info.id, team });
+    bots.sync(roster);
+    broadcastToGuests({ type: 'lobby', roster: publicRoster(), mode });
+    setStatus(`${info.name} added to ${team === 0 ? 'BLUE' : 'ORANGE'} — its policy loads in the background.`);
+    controls();
+  }
+
+  function removeBot(id) {
+    if (role !== 'host' || starting || room) return;
+    const player = (roster ?? []).find(candidate => candidate.id === id && candidate.bot);
+    if (!player) return;
+    roster = reindexRoster(roster.filter(candidate => candidate !== player));
+    refreshGuestSlots();
+    hostBots?.remove(id);
+    hostBots?.sync(roster);
+    broadcastToGuests({ type: 'lobby', roster: publicRoster(), mode });
+    controls();
+  }
+
+  // Mode changes shrink the roster budget: trim bots (never humans) until the
+  // roster and each team fit the new mode.
+  function trimRosterForMode() {
+    if (role !== 'host' || starting || room) return;
+    let changed = false;
+    let players = [...(roster ?? [])];
+    while (players.length > teamCap() * 2) {
+      const bot = [...players].reverse().find(player => player.bot);
+      if (!bot) break;
+      players = players.filter(player => player !== bot);
+      hostBots?.remove(bot.id);
+      changed = true;
+    }
+    for (const team of [0, 1]) {
+      while (players.filter(player => player.team === team).length > teamCap()) {
+        const bot = [...players].reverse().find(player => player.bot && player.team === team);
+        if (!bot) break;
+        players = players.filter(player => player !== bot);
+        hostBots?.remove(bot.id);
+        changed = true;
+      }
+    }
+    if (changed) {
+      roster = reindexRoster(players);
+      refreshGuestSlots();
+      hostBots?.sync(roster);
+      broadcastToGuests({ type: 'lobby', roster: publicRoster(), mode });
+    }
   }
 
   function waitForGuestsPrepared(attempt) {
@@ -467,11 +657,17 @@ export function mountP2P(root, hooks) {
       controls();
       return;
     }
-    if (!guests.size || !allGuestsReady()) return;
+    if (!teamsValid()) { setStatus('Both teams need at least one car (add a bot or invite a player).'); return; }
+    if ((guests.size || botCount()) === 0) return;
+    if (!allGuestsReady()) return;
+    if (!botsReady()) { setStatus(botsLoading() ? 'Bots are still loading their policy — one moment.' : 'A bot failed to load. Remove it and add it again.'); return; }
     const attempt = generation;
     starting = true; lastResult = null; find('.online-results').hidden = true;
     controls(); setStatus('Preparing the shared arena…');
+    // Freeze the roster as the wire roster: slots are array positions and
+    // stay fixed for the whole match (guests and bots alike).
     const startRoster = [...roster];
+    hostBots?.sync(startRoster);
     matchEvents = new MatchEvents(startRoster.map(player => player.team));
     // Everyone loads the same arena in parallel; each welcome carries the
     // guest's own slot so prediction reorders the wire state correctly.
@@ -485,17 +681,19 @@ export function mountP2P(root, hooks) {
       clearTimeout(readyTimer); readyTimer = 0; readyWaiter = null;
       if (attempt !== generation) return;
       const prepared = [...guests.values()].filter(entry => entry.prepared);
-      if (prepared.length === 0) throw new Error('No player finished loading. Share the code and retry.');
+      if (prepared.length === 0 && botCount() === 0) throw new Error('No player finished loading. Share the code and retry.');
       // Every connected guest keeps a channel: a slow loader catches up the
       // moment it finishes because snapshots already flow to its slot.
       const channels = new Map([...guests.entries()].map(([slot, entry]) => [slot, {
         send: payload => sendPayload(entry.conn, payload),
-        congested: () => (entry.conn?.dataChannel?.bufferedAmount ?? 0) > CONGESTION_BYTES
+        congested: () => (entry.conn?.dataChannel?.bufferedAmount ?? 0) > CONGESTION_BYTES,
+        queued: () => entry.conn?.dataChannel?.bufferedAmount ?? 0
       }]));
       room = new HostRoom({
         sim: hooks.sim, match: hooks.match, players: startRoster,
         guests: channels,
         snapshotHz: SNAPSHOT_HZ_BY_MODE[mode] ?? 60,
+        bots: hostBots,
         events: matchEvents,
         onEvent: event => {
           if (event.type === 'kickoff') hooks.kickoff?.();
@@ -849,8 +1047,29 @@ export function mountP2P(root, hooks) {
     const modeButton = event.target.closest('[data-mode]');
     if (modeButton && !modeButton.disabled) {
       mode = modeButton.dataset.mode;
+      trimRosterForMode();
       controls();
-      setStatus(`${mode} — ${lobbyCapacity() + 1} player${lobbyCapacity() ? 's' : ''} per match. Create a room and share the code.`);
+      setStatus(`${mode} — ${teamCap() * 2} cars per match. Create a room and share the code.`);
+      return;
+    }
+    const teamButton = event.target.closest('[data-team]');
+    if (teamButton && !teamButton.disabled) {
+      const team = Number(teamButton.dataset.team);
+      if (role === 'host') setPlayerTeam(0, team);
+      else if (role === 'guest' && conn?.open) {
+        sendPayload(conn, { type: 'team', team });
+        setStatus(team === 0 ? 'Switching to BLUE…' : 'Switching to ORANGE…');
+      }
+      return;
+    }
+    const botButton = event.target.closest('[data-bot]');
+    if (botButton && !botButton.disabled) {
+      addBot(Number(botButton.dataset.bot));
+      return;
+    }
+    const removeBotButton = event.target.closest('[data-remove-bot]');
+    if (removeBotButton) {
+      removeBot(removeBotButton.dataset.removeBot);
       return;
     }
     const action = event.target.closest('[data-p2p]')?.dataset.p2p;
@@ -875,16 +1094,21 @@ export function mountP2P(root, hooks) {
       catch { setStatus(`Copy and share this code: ${code}`); }
     }
   });
+  panel.addEventListener('change', event => {
+    const select = event.target.closest('[data-bot-id]');
+    if (select) selectedBotId = BOT_CATALOG.some(bot => bot.id === select.value) ? select.value : 'nexto';
+  });
   panel.querySelector('form').addEventListener('submit', event => { event.preventDefault(); });
   hud.querySelector('[data-leave]').onclick = () => { leave(); hide(); hooks.home(); };
 
   function escape() { back(); }
 
   function hostNetworkText() {
-    if (!guests.size) return conn?.open ? 'Host authority · 120 Hz' : 'No peers connected';
+    if (!guests.size) return room ? `Host authority · 120 Hz · ${room.snapshotHz} Hz snapshots · bots only` : (conn?.open ? 'Host authority · 120 Hz' : 'No peers connected');
     const rtts = [...hostRtts.values()];
     const worst = rtts.length ? Math.max(...rtts) : null;
-    return `Host authority · 120 Hz · ${guests.size} peer${guests.size > 1 ? 's' : ''}${worst === null ? '' : ` · worst ${worst} ms`}`;
+    const hz = room?.snapshotHz ?? SNAPSHOT_HZ_BY_MODE[mode] ?? 60;
+    return `Host authority · 120 Hz · ${hz} Hz snapshots · ${guests.size} peer${guests.size > 1 ? 's' : ''}${worst === null ? '' : ` · worst ${worst} ms`}${hz < (SNAPSHOT_HZ_BY_MODE[mode] ?? 60) ? ' · adapting to link' : ''}`;
   }
 
   return {
@@ -932,7 +1156,9 @@ export function mountP2P(root, hooks) {
       const neutral = document.hidden || !document.hasFocus() || !panel.hidden;
       if (role === 'host') {
         room.setLocalControls(neutral ? NEUTRAL : controlsArray(controls));
-        collectRemoteControls(room.guestSlots.map(slot => room.guestControlsArray(slot)));
+        // Remote controls for VFX/audio cover every non-host car: guest streams
+        // AND host-driven bots, all in wire order.
+        collectRemoteControls(room.slots.map(slot => room.remoteControlsArray(slot)));
         clock.update(now, () => {}, () => room.step());
         // One snapshot per frame, newest state only: catch-up batches must not
         // emit bursts of back-to-back packets into every guest's queue.
@@ -947,16 +1173,17 @@ export function mountP2P(root, hooks) {
           }
         }
       } else if (prediction) {
-        const usable = conn?.open && now - lastSnapshotAt < 1250;
+        const usable = conn?.open && now - lastSnapshotAt < 1500;
         prediction.update(now, neutral ? NEUTRAL : controlsArray(controls),
           (seq, values, metadata) => {
             const message = { type: 'input', seq, epoch: metadata.epoch, controls: values };
             sendPayload(conn, message);
             // Loss immunity: a second copy rides a separate SCTP message a few
             // ms later; the host drops duplicates by sequence number. Skipped
-            // when the send queue is backed up — a duplicate is pure overhead.
+            // early when the send queue shows any strain — a duplicate is pure
+            // overhead on a link that is already working hard.
             setTimeout(() => {
-              if ((conn?.dataChannel?.bufferedAmount ?? 0) < CONGESTION_BYTES) sendPayload(conn, message);
+              if ((conn?.dataChannel?.bufferedAmount ?? 0) < INPUT_DUP_BYTES) sendPayload(conn, message);
             }, 8);
           },
           clock, usable, { render });
