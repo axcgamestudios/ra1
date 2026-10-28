@@ -2,7 +2,7 @@
 // goal explosion, open the garage decals panel — no errors allowed.
 import { chromium } from 'playwright';
 import { spawn } from 'node:child_process';
-import { mkdtemp } from 'node:fs/promises';
+import { mkdtemp, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
@@ -24,6 +24,14 @@ const browser = await chromium.launch({
   args: ['--no-sandbox', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
 });
 const context = await browser.newContext({ viewport: { width: 960, height: 540 } });
+// Keep the run hermetic: the axc account libraries resolve to the same
+// copies shipped with the game, and the account server/network stay local.
+const axcAuth = await readFile(join(import.meta.dirname, '../public/assets/axc/axc-auth.js'), 'utf8');
+const axcUi = await readFile(join(import.meta.dirname, '../public/assets/axc/axc-ui.js'), 'utf8');
+await context.route('**/axcStudios/axc-auth.js', route => route.fulfill({ contentType: 'application/javascript', body: axcAuth }));
+await context.route('**/axcStudios/axc-ui.js', route => route.fulfill({ contentType: 'application/javascript', body: axcUi }));
+await context.route('**textdb.dev/**', route => route.fulfill({ contentType: 'text/plain', body: '' }));
+await context.route('**ntfy.sh/**', route => route.fulfill({ contentType: 'text/plain', body: '' }));
 await context.addInitScript(() => {
   localStorage.setItem('rocket-arena.local-graphics-presets.v1', JSON.stringify({
     qualityPreset: 'potato', renderScale: .25, showStadium: false, limitFps: true, maxFps: 30,

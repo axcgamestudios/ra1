@@ -99,14 +99,6 @@ const server = createServer(async (request, response) => {
     response.writeHead(200, { 'Content-Type': 'application/json' });
     response.end(JSON.stringify(onlineConfiguration())); return;
   }
-  if (!production && pathname === '/assets/online/auth-sdk.js') {
-    try {
-      const { build } = await import('esbuild');
-      const result = await build({ entryPoints: [join(projectRoot, 'src/online/auth-sdk.js')], bundle: true, write: false, format: 'esm', platform: 'browser', minify: true });
-      response.writeHead(200, { 'Content-Type': 'application/javascript' }); response.end(result.outputFiles[0].text);
-    } catch { response.writeHead(503); response.end('throw Error("Install online dependencies with npm ci first")'); }
-    return;
-  }
   const filePath = requestedFile(pathname);
   if (!filePath) {
     response.writeHead(403);

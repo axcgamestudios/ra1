@@ -4,6 +4,7 @@
 // BALL" in free play) and the player card with CREATE PARTY bottom-left.
 import { Ks } from '../input/controller-selection.js';
 import { playerLevel } from '../core/player-progress.js';
+import { accountPlayerName, onAxAuth, axcModalOpen } from '../online/axc-account.js';
 
 const MENU_ROWS = [
   ['resume', 'RESUME GAME'],
@@ -53,13 +54,15 @@ export function mountPauseMenu(root, actions) {
     hint.hidden = state.mode !== 'freeplay';
     panel.querySelector('[data-pause="training"]')?.toggleAttribute('hidden', !!state.online);
     panel.querySelector('[data-pause="online"]')?.toggleAttribute('hidden', !!state.online);
-    try { panel.querySelector('[data-pause-name]').textContent = (localStorage.getItem('arena.p2p.name') || 'PLAYER').toUpperCase(); } catch {}
+    try { panel.querySelector('[data-pause-name]').textContent = (accountPlayerName() || 'PLAYER').toUpperCase(); } catch {}
     try { panel.querySelector('[data-pause-level]').textContent = 'LVL ' + playerLevel(); } catch {}
     try {
-      const name = (localStorage.getItem('arena.p2p.name') || 'PLAYER').trim().toUpperCase();
+      const name = (accountPlayerName() || 'PLAYER').trim().toUpperCase();
       panel.querySelector('[data-pause-avatar]').textContent = (name[0] || 'P');
     } catch {}
   }
+  // The card mirrors the axc account name the moment a session starts.
+  onAxAuth(() => { if (open) syncState(); });
   function moveFocus(direction) {
     const focusables = buttons.filter(button => !button.hidden);
     const index = focusables.indexOf(document.activeElement);
@@ -84,6 +87,8 @@ export function mountPauseMenu(root, actions) {
   }
   function gamepad() {
     if (!open) return;
+    // The axc account modal owns the input while it is open.
+    if (axcModalOpen()) { previousDirection = 0; previousConfirm = previousCancel = false; poll = requestAnimationFrame(gamepad); return; }
     const pad = activePad();
     const direction = directionOf(pad);
     const confirm = !!pad?.buttons[0]?.pressed, cancel = !!pad?.buttons[1]?.pressed;

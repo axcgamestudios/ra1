@@ -1,6 +1,10 @@
 // DOM overlay over the existing arena. The game owns the paused scene and camera.
 import { Ks } from '../input/controller-selection.js';
 import { playerLevel } from '../core/player-progress.js';
+import {
+  initAxAccount, mountAxChip, onAxAuth, onAxPresence, onAxStatus,
+  accountPlayerName, axcModalOpen, axcNetwork,
+} from '../online/axc-account.js';
 
 export function mountHome(root, actions) {
   const panel = document.createElement('section');
@@ -9,6 +13,10 @@ export function mountHome(root, actions) {
   panel.setAttribute('aria-label', 'Rocket League home');
   panel.innerHTML = `
     <header class="arena-home__header"><img class="arena-home__logo" src="/assets/ui/rocket-arena-mark.webp" width="1254" height="1254" alt=""><div class="arcade-brand">ROCKET <span>LEAGUE</span></div></header>
+    <div class="arena-home__account" aria-label="axc account">
+      <p class="arena-home__axcnet" data-home-axcnet hidden></p>
+      <div class="arena-home__chip" data-home-chip></div>
+    </div>
     <div class="arena-home__player" aria-label="Player card"><span class="arena-home__player-name" data-home-player>PLAYER</span><span class="arena-home__player-meta"><b class="arena-home__player-level" data-home-level>LVL 1</b><span class="arena-home__player-rank">CASUAL · ROOKIE</span></span></div>
     <div class="arena-home__navigation" data-home-page="main"><nav aria-label="Home menu">
       <button type="button" class="arena-home__choice is-play" data-home="play"><span class="play-key" aria-hidden="true">A</span><span class="play-copy"><strong>PLAY</strong><small>HIT THE FIELD</small></span></button>
@@ -32,18 +40,35 @@ export function mountHome(root, actions) {
   homeButton.setAttribute('aria-label', 'Open home screen');
   (root.querySelector('.hud-tools') ?? root).append(homeButton);
   root.append(panel);
-  // Player card mirrors the saved online display name plus the local level,
-  // Rocket League style.
+  // Player card mirrors the axc account name (SSO) or the saved online
+  // display name plus the local level, Rocket League style.
   const syncPlayerCard = () => {
-    try { panel.querySelector('[data-home-player]').textContent = (localStorage.getItem('arena.p2p.name') || 'PLAYER').toUpperCase(); } catch {}
+    try { panel.querySelector('[data-home-player]').textContent = (accountPlayerName() || 'PLAYER').toUpperCase(); } catch {}
     try { panel.querySelector('[data-home-level]').textContent = 'LVL ' + playerLevel(); } catch {}
   };
   syncPlayerCard();
+  // axc account system: chip (sign in / avatar menu) in the header corner,
+  // live presence of the axc network, and name sync on every sign-in/out.
+  const axcNet = panel.querySelector('[data-home-axcnet]');
+  const syncAxNet = () => {
+    const { presence, ws } = axcNetwork();
+    const text = ws === 'online' && presence > 0 ? `AXC NET · ${presence} ONLINE` : ws === 'connecting' ? 'AXC NET · CONNECTING' : '';
+    axcNet.hidden = !text;
+    axcNet.textContent = text || '';
+  };
+  void initAxAccount().then(() => {
+    mountAxChip(panel.querySelector('[data-home-chip]'));
+    syncAxNet();
+    dirty = true;
+  });
+  onAxAuth(() => { syncPlayerCard(); });
+  onAxPresence(syncAxNet);
+  onAxStatus(syncAxNet);
   let visible = false, dirty = true, drag = null, poll = 0, page = 'main';
   let enterTimer = 0;
   let lastDirection = 0, lastMove = 0, previousConfirm = false, previousCancel = false;
   const orbit = { yaw: 2.087180175781252, pitch: 0.08, distance: 1 };
-  const buttons = () => [...panel.querySelectorAll('[data-home]')].filter(button => !button.hidden && !button.closest('[hidden]'));
+  const buttons = () => [...panel.querySelectorAll('[data-home], .arena-home__account .axcui-chip')].filter(button => !button.hidden && !button.closest('[hidden]'));
   function setPage(next) {
     page = next;
     for (const section of panel.querySelectorAll('[data-home-page]')) section.hidden = section.dataset.homePage !== next;
@@ -60,6 +85,8 @@ export function mountHome(root, actions) {
   }
   function gamepad(now) {
     if (!visible) return;
+    // The axc account modal owns the input while it is open.
+    if (axcModalOpen()) { lastDirection = 0; previousConfirm = previousCancel = false; poll = requestAnimationFrame(gamepad); return; }
     // Follow the SELECTED controller (same source as gameplay) instead of the
     // first entry in navigator.getGamepads(), which may be a different device
     // (e.g. a wheel or a second pad) when several gamepads are connected.

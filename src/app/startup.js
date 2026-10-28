@@ -1,4 +1,5 @@
 import { mountP2P } from '../online/p2p.js';
+import { initAxAccount, axcModalOpen, axcModalOwnsKeys } from '../online/axc-account.js';
 import { MatchEvents } from '../match/match-events.js';
 import { createAnnouncer } from '../audio/announcer.js';
 import { createScoreboard, scoreboardData } from '../ui/scoreboard.js';
@@ -535,6 +536,10 @@ async function startGame() {
         gt == null || gt.setFpsLimit(W.limitFps ? W.maxFps : null));
     }),
     ft = () => {
+      // The axc account modal handles its own keys (Escape included) while
+      // it is open — including the Escape that just closed it — so the game
+      // must not close the dialogs underneath it.
+      if (axcModalOpen() || axcModalOwnsKeys()) return;
       if (online?.visible) { online.escape(); return; }
       if (home?.visible) return;
       if (pauseMenu?.isOpen) { pauseMenu.hide(); st(); return; }
@@ -1499,6 +1504,9 @@ async function startGame() {
       camera: () => H.camera,
     }) });
   }
+  // axc SSO accounts boot off the critical path: the chip, the account name
+  // and the network presence appear as soon as the system is ready.
+  void initAxAccount();
   home.show();
   void online.restoreIntent();
   ((gt = new FrameScheduler(te.getContext(), wt, (W) => He.displayFrame(W), W => {

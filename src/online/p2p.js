@@ -16,6 +16,7 @@ import { Prediction } from './prediction.js';
 import { MatchEvents } from '../match/match-events.js';
 import { victoryContent } from '../ui/victory-screen.js';
 import { controlsArray, decodeSnapshot, validName, NEUTRAL, PROTOCOL, PHYSICS_SHA256 } from './protocol.js';
+import { initAxAccount, onAxAuth, axcName, axcReady, axcOpenAuth, axcModalOpen } from './axc-account.js';
 import { NETWORK_CORE_SHA256 } from '../physics/network-core.js';
 import { Ks } from '../input/controller-selection.js';
 import { JA, pl as BOT_CATALOG } from '../bots/catalog.js';
@@ -168,9 +169,10 @@ export function mountP2P(root, hooks) {
   panel.hidden = true;
   panel.innerHTML = `<div class="online-dialog" role="dialog" aria-modal="true" aria-labelledby="p2p-title">
     <header class="online-heading"><div><p class="online-eyebrow">ROCKET LEAGUE · PEER-TO-PEER</p><h1 id="p2p-title">MULTIPLAYER</h1></div><button type="button" data-p2p="back" class="online-close" aria-label="Back to Play">×</button></header>
-    <p class="online-subtitle">Direct matches over WebRTC — 1v1, 2v2 or 3v3. Share a five-letter room code — no account, no game server.</p>
+    <p class="online-subtitle">Direct matches over WebRTC — 1v1, 2v2 or 3v3. Share a five-letter room code — no game server required.</p>
     <form class="online-form">
-      <div class="online-account-row"><label class="online-name">DISPLAY NAME<input name="displayName" autocomplete="nickname" minlength="2" maxlength="24" value="Player" required></label><div class="online-identity">Host plays Blue · Teams auto-balance</div></div>
+      <div class="online-axc-row"><button type="button" class="online-axc" data-p2p="account" hidden><span class="online-axc__ava" data-axc-ava hidden></span><span data-axc-label>SIGN IN · AXC ACCOUNT</span></button><p class="online-axc__hint">One axc account for every axc page — your name travels with you.</p></div>
+      <div class="online-account-row"><label class="online-name">DISPLAY NAME<input name="displayName" autocomplete="nickname" minlength="2" maxlength="24" value="Player" required></label><div class="online-identity" data-p2p-identity>Host plays Blue · Teams auto-balance</div></div>
       <div class="online-mode-picker" role="radiogroup" aria-label="Team size">
         <span class="online-mode-label">MODE</span>
         <button type="button" data-mode="1v1" class="online-mode is-active" aria-pressed="true">1v1</button>
@@ -182,7 +184,7 @@ export function mountP2P(root, hooks) {
       <section class="online-private-lobby" hidden aria-label="Peer-to-peer room"><div class="online-invite"><span>ROOM CODE</span><output data-room-code></output><button type="button" data-p2p="copy">COPY CODE</button></div><p data-lobby-note>Peer-to-peer casual · The host runs the authoritative arena in their browser.</p><div class="online-team-picker" role="radiogroup" aria-label="Your team"><span class="online-mode-label">YOUR TEAM</span><button type="button" data-team="0" class="online-team online-team-blue">BLUE</button><button type="button" data-team="1" class="online-team online-team-orange">ORANGE</button></div><div class="online-private-roster"></div><div class="online-bot-fill" hidden><span class="online-mode-label">FILL WITH BOTS</span><button type="button" data-bot="0" class="online-bot-add online-team-blue">+ BOT · BLUE</button><button type="button" data-bot="1" class="online-bot-add online-team-orange">+ BOT · ORANGE</button><label class="online-bot-kind"><span class="online-mode-label">BOT</span><select data-bot-id aria-label="Bot type"><option value="nexto" selected>NEXTO · GC</option><option value="necto">NECTO · DIAMOND</option><option value="seer">SEER · PLAT</option></select></label></div><div class="online-actions"><button type="button" data-p2p="start" class="online-primary">START MATCH</button><button type="button" data-p2p="leave-room">LEAVE ROOM</button></div></section>
       <div class="online-results" hidden></div>
       <div class="online-actions"><button type="button" data-p2p="again" class="online-primary" hidden>PLAY AGAIN</button><button type="button" data-p2p="bots">PLAY BOTS OFFLINE</button></div>
-      <p class="online-account-help">All players must use the default (experimental) physics. Controls match Rocket League: W/S throttle, A/D steer, Left Click boost, Right Click jump, Shift powerslide/air roll, Space ball cam.</p>
+      <p class="online-account-help">All players must use the default (experimental) physics. Controls match Rocket League: W/S throttle, A/D steer, Left Click boost, Right Click jump, Shift powerslide/air roll, Space ball cam. Sign in with your axc account to lock your display name to it.</p>
     </form>
   </div>`;
   const hud = document.createElement('section');
@@ -195,6 +197,32 @@ export function mountP2P(root, hooks) {
   const input = find('[name="displayName"]'), codeInput = find('[name="roomCode"]');
   try { input.value = localStorage.getItem(NAME_KEY) || 'Player'; } catch {}
 
+  // axc SSO account: the signed-in username IS the display name (locked);
+  // guests keep the free-name flow. Hidden until the system is available.
+  function syncAccountUI() {
+    const button = find('[data-p2p="account"]');
+    if (!button) return;
+    const ready = axcReady();
+    button.hidden = !ready;
+    find('.online-axc-row').hidden = !ready;
+    if (!ready) return;
+    const ava = find('[data-axc-ava]'), label = find('[data-axc-label]');
+    const name = axcName();
+    if (name) {
+      ava.hidden = false;
+      ava.textContent = name[0].toUpperCase();
+      label.textContent = `${name} · AXC ACCOUNT`;
+      input.value = name;
+      find('[data-p2p-identity]').textContent = 'Signed in · Your axc account name';
+    } else {
+      ava.hidden = true;
+      label.textContent = 'SIGN IN · AXC ACCOUNT';
+      find('[data-p2p-identity]').textContent = 'Guest · Host plays Blue, teams auto-balance';
+    }
+  }
+  onAxAuth(() => { syncAccountUI(); controls(); });
+  void initAxAccount();
+
   function show() {
     panel.hidden = false; hooks.modal(true); root.classList.add('online-menu');
     cancelAnimationFrame(poll); poll = requestAnimationFrame(gamepadPoll);
@@ -205,6 +233,9 @@ export function mountP2P(root, hooks) {
 
   function gamepadPoll(now) {
     if (panel.hidden) return;
+    // The axc account modal owns the input while it is open: pad navigation
+    // must not click the room dialog hidden underneath.
+    if (axcModalOpen()) { oldButtons = []; poll = requestAnimationFrame(gamepadPoll); return; }
     // Follow the SELECTED controller so the P2P room menus match gameplay
     // input when several gamepads are connected.
     const pad = Ks();
@@ -244,7 +275,7 @@ export function mountP2P(root, hooks) {
     find('[data-p2p="create"]').disabled = !!role || preparing;
     find('[data-p2p="join"]').disabled = !!role || preparing;
     codeInput.disabled = !!role || preparing;
-    input.disabled = !!role || preparing || active;
+    input.disabled = !!role || preparing || active || !!axcName();
     for (const button of panel.querySelectorAll('[data-mode]')) {
       const activeMode = !role && !lastResult;
       button.disabled = !activeMode || preparing;
@@ -337,6 +368,7 @@ export function mountP2P(root, hooks) {
 
   async function open(focus = '') {
     lastResult = null; find('.online-results').hidden = true;
+    syncAccountUI();
     show();
     setStatus(focus === 'host' ? 'Create a room and share the five-letter code with your friends.'
       : focus === 'join' ? 'Enter the five-letter room code shared by the host.'
@@ -1074,6 +1106,10 @@ export function mountP2P(root, hooks) {
     }
     const action = event.target.closest('[data-p2p]')?.dataset.p2p;
     if (action === 'back') back();
+    else if (action === 'account') {
+      // Open the axc account modal (login/signup with the Buzón axc code flow).
+      if (!axcOpenAuth('login')) setStatus('The account system is still connecting — try again in a moment.');
+    }
     else if (action === 'create') createRoom();
     else if (action === 'join') joinRoom();
     else if (action === 'start') startMatch();

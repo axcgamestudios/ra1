@@ -368,3 +368,20 @@
 #app .online-stats tr.blue-team td:first-child { color:#7fd4ff; }
 #app .online-stats tr.orange-team td:first-child { color:#ffb877; }
 #app .online-stats td:last-child { font-weight:900;color:#fff; }
+
+/* ------------------------------------------------- axc SSO account (system) */
+/* Account row inside the P2P dialog: sign-in button styled like the room
+   actions; once signed in it shows the avatar + username and the display
+   name input locks to the account name. Hidden until the system loads. */
+#app .online-axc-row { display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:18px; }
+#app .online-axc-row[hidden] { display:none; }
+#app .online-axc { display:inline-flex;align-items:center;gap:9px;padding:9px 16px;border:1px solid #2e6d96;border-radius:5px;background:linear-gradient(100deg,#0a3a66,#031b33 88%);color:#cdeeff;font:900 12px/1 "Arial Narrow","Roboto Condensed",Arial,sans-serif;letter-spacing:.08em;cursor:pointer;transition:background 150ms ease,border-color 150ms ease,transform 150ms ease; }
+#app .online-axc:is(:hover,:focus-visible) { outline:none;background:linear-gradient(100deg,#0d5a9c,#06294d 88%);border-color:#7fe4ff;transform:translateX(3px);box-shadow:0 0 18px #09bdff33; }
+#app .online-axc__ava { display:grid;place-items:center;width:24px;height:24px;border-radius:5px;background:linear-gradient(135deg,#2e7cf6,#38e8ff);color:#04101f;font:900 13px/1 "Arial Narrow",Arial,sans-serif; }
+#app .online-axc__hint { margin:0;color:#7fa9c2;font:400 11px/1.4 Archivo,Arial,sans-serif; }
+@media(max-width:640px) { #app .online-axc__hint { flex-basis:100%; } }
+/* The account system auto-applies a cursor-following .glow treatment to
+   common class names (.chip among them). Keep it away from the game's own
+   controls; the account chrome itself (outside #app) keeps the effect. */
+#app .chip.glow::before, #app .chip.glow::after { content:none !important; }
+#app .chip.glow > * { position:static !important; z-index:auto !important; }
