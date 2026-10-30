@@ -68,8 +68,8 @@ const localQualityProfiles = {
     },
     balanced: {
       label: "Balanced",
-      pixelRatio: 0.7,
-      antialias: !1,
+      pixelRatio: 1,
+      antialias: !0,
       shadows: !1,
       effects: !1,
       detailedBall: !0,
@@ -99,6 +99,14 @@ const localQualityProfiles = {
 const localQualityProfile = (i) =>
     localQualityProfiles[i] ?? localQualityProfiles.balanced;
 
+// Sub-native render scales were what this build used to install by default
+// (0.85 factory, 0.7 Balanced, 0.6 Potato). With the photo turf as the base
+// color they upscale into a visibly "pixeleado" frame, so stored copies of
+// exactly those defaults are upgraded to full resolution once; a scale a
+// player picked by hand (anything else, including Potato's own 0.6) survives.
+const isLegacySubNativeDefault = (scale, preset) =>
+    scale === 0.85 || scale === 0.7 || (scale === 0.6 && preset !== "potato");
+
 const Ma = 30;
 
 const SA = 120;
@@ -107,7 +115,7 @@ const graphicsSettings = createSettingsStore(
     "rocket-arena.local-graphics-presets.v1",
     () => ({
       qualityPreset: "balanced",
-      renderScale: 0.85,
+      renderScale: 1,
       showStadium: !1,
       limitFps: !0,
       maxFps: 60,
@@ -118,7 +126,11 @@ const graphicsSettings = createSettingsStore(
         localQualityPresetIds,
         i.qualityPreset,
       )),
-        (i.renderScale = readNumber(e.renderScale, Math.min(1, localQualityProfile(i.qualityPreset).pixelRatio), { min: 0.1, max: 1 })),
+        (i.renderScale = readNumber(
+          isLegacySubNativeDefault(e.renderScale, readChoice(e.qualityPreset, localQualityPresetIds, i.qualityPreset)) ? 1 : e.renderScale,
+          Math.min(1, localQualityProfile(i.qualityPreset).pixelRatio),
+          { min: 0.1, max: 1 },
+        )),
         (i.showStadium = readBoolean(e.showStadium, i.showStadium)),
         (i.limitFps = readBoolean(e.limitFps, i.limitFps)),
         (i.maxFps = readNumber(e.maxFps, i.maxFps, { min: Ma, max: SA, integer: !0 })));

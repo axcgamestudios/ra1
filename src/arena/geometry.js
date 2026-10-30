@@ -7,7 +7,6 @@ import { ho as GLTFLoader } from "../vendor/gltf-loader.js";
 import { createParkFlags } from "./park-flags.js";
 import { createParkTurfMaterial } from "../materials/park-lighting.js";
 import { PARK_ART, createParkBackdrop, createParkBankMaterial, createParkBoostPad, createParkFence, createParkHorizon, createParkScenery, createParkTrees, mapParkBankUVs, paintParkPadMarks, paintParkPitch } from "./park.js";
-import { createGrassField } from "./grass-field.js";
 import { Ao, Ct, Ee, F, Gi, Hm, Hs, Ht, Ke, Lt, Ne, Nm, Qt, Tn, Ur, Ut, Wa, Xt, Zm, bd, ci, cn, dt, jn, li, lt, pr, qt, ui, zm } from "../vendor/three.js";
 import { hb, hl } from "../vendor/buffer-geometry-utils.js";
 import { Ji, Vi, vn } from "../rendering/theme-materials.js";
@@ -215,7 +214,7 @@ function Tp(artwork) {
   const texture = new bd(canvas);
   texture.name = "Park / painted checker turf and regulation markings";
   texture.colorSpace = Ht; texture.minFilter = pr; texture.magFilter = qt;
-  texture.anisotropy = 8;
+  texture.anisotropy = 16;
   return texture;
 }
 
@@ -251,7 +250,11 @@ async function loadParkArt(turf, quality) {
   }
   grass.dispose();
   detail.wrapS = detail.wrapT = ci;
-  detail.colorSpace = Ht; detail.anisotropy = 8;
+  detail.colorSpace = Ht;
+  // Full anisotropic filtering: the turf is seen at grazing angles almost the
+  // whole match, and anything less makes the photo read as smeared blocks.
+  // three.js clamps this to the GPU's EXT_texture_filter_anisotropic maximum.
+  detail.anisotropy = 16;
   const surface = turf.getObjectByName("Park / painted playing surface");
   const ground = surface.material.userData.parkGround;
   ground.detail.value = detail;
@@ -259,10 +262,6 @@ async function loadParkArt(turf, quality) {
   const paintedGreenMean = measureCanvasGreenMean(hg.get(turf)?.[0]?.base);
   const photoMean = measureGrassDetailMean(detail.image);
   ground.grassGain.value = Math.min(1.6, Math.max(0.7, paintedGreenMean / Math.max(photoMean, .001)));
-  // Fine 3D blades over the pitch: a dense carpet whose colors come from the
-  // same canvas + photo composite as the surface; contact shadows are shared.
-  const blades = createGrassField(quality, ground, hg.get(turf)?.[0]?.texture, detail);
-  if (blades) turf.add(blades);
   groundAO.colorSpace='';groundAO.flipY=false;
   turf.getObjectByName("Park / painted playing surface").material.userData.parkGround.v2GroundAO.value=groundAO;
   const [cityAtlas, landShade, landDetail, landReflection, frozenWater, props] = exterior;

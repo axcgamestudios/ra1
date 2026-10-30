@@ -1,5 +1,7 @@
-// Grass pass verification: user-supplied pasto texture applied at full
-// resolution (no stretch), fine 3D blades on High/Balanced, none on Potato.
+// Flat photo-turf pass verification (3D blades removed per user request):
+// the pasto photo is the base color at full resolution, the frame renders at
+// NATIVE resolution by default (the "pixeleado" fix), anisotropy is maxed and
+// no blade mesh exists on any preset.
 import { chromium } from 'playwright';
 import { spawn } from 'node:child_process';
 import { mkdir } from 'node:fs/promises';
@@ -22,152 +24,146 @@ const browser = await chromium.launch({
   headless: true,
   args: ['--no-sandbox', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
 });
-const context = await browser.newContext({ viewport: { width: 800, height: 450 } });
-await context.addInitScript(() => {
-  localStorage.setItem('rocket-arena.local-graphics-presets.v1', JSON.stringify({
-    qualityPreset: 'high', renderScale: 0.5, showStadium: true, limitFps: true, maxFps: 30,
-  }));
-});
-const page = await context.newPage();
-page.setDefaultTimeout(150000);
-const errors = [];
 // Known pre-existing SwiftShader limitation (reproduced on the parent
 // commit): the Fennec chassis shadow material compiles GLSL with a
 // dynamically indexed sampler array, which SwiftShader's translator rejects.
-// Unrelated to the grass pass — filtered so only real regressions fail.
+// Unrelated to the turf pass — filtered so only real regressions fail.
 const isKnownSwiftShaderCarError = text => /Fennec_Chassis|texture2DCompare|array index for samplers/.test(text);
-page.on('pageerror', e => { if (!isKnownSwiftShaderCarError(String(e))) errors.push(String(e).slice(0, 300)); });
-page.on('console', m => { if (m.type() === 'error' && !isKnownSwiftShaderCarError(m.text())) errors.push(m.text().slice(0, 300)); });
-await page.goto(`http://127.0.0.1:${PORT}/?physicsDebug=1`, { waitUntil: 'domcontentloaded' });
-await page.locator('.arena-home:not([hidden])').waitFor();
-await page.locator('[data-home="play"]').click();
-await page.locator('[data-home="freeplay"]').click();
-await page.waitForFunction(() => window.rocketArenaPresentation, null, { timeout: 60000 });
-await delay(6000);
 
-// 1) Scene facts: blade mesh, blade count, texture resolution, gain match.
-const facts = await page.evaluate(() => {
+const boot = async ({ stored, viewport = { width: 1024, height: 576 }, deviceScaleFactor = 1 }) => {
+  const context = await browser.newContext({ viewport, deviceScaleFactor });
+  if (stored) await context.addInitScript(value => {
+    if (value !== null) localStorage.setItem('rocket-arena.local-graphics-presets.v1', JSON.stringify(value));
+  }, stored);
+  const page = await context.newPage();
+  page.setDefaultTimeout(150000);
+  const errors = [];
+  page.on('pageerror', e => { if (!isKnownSwiftShaderCarError(String(e))) errors.push(String(e).slice(0, 300)); });
+  page.on('console', m => { if (m.type() === 'error' && !isKnownSwiftShaderCarError(m.text())) errors.push(m.text().slice(0, 300)); });
+  await page.goto(`http://127.0.0.1:${PORT}/?physicsDebug=1`, { waitUntil: 'domcontentloaded' });
+  await page.locator('.arena-home:not([hidden])').waitFor();
+  await page.locator('[data-home="play"]').click();
+  await page.locator('[data-home="freeplay"]').click();
+  await page.waitForFunction(() => window.rocketArenaPresentation, null, { timeout: 60000 });
+  await delay(6000);
+  return { context, page, errors };
+};
+
+const factsOf = page => page.evaluate(() => {
   const world = window.rocketArenaPresentation.world();
   const blades = world.turf.getObjectByName('Park / fine 3D grass blades');
   const surface = world.turf.getObjectByName('Park / painted playing surface');
   const ground = surface.material.userData.parkGround;
   const detail = ground.detail.value;
+  const canvas = surface.material.map.image;
   return {
     bladesPresent: Boolean(blades),
-    bladeCount: blades?.userData.bladeCount ?? 0,
-    spacing: blades?.userData.grassSpacing ?? null,
-    visible: blades?.visible ?? null,
+    bladeMeshes: world.scene.children.length && world.turf.children.filter(c => /blade/i.test(c.name)).length,
     detailImage: detail?.image ? `${detail.image.width}x${detail.image.height}` : null,
+    detailAnisotropy: detail?.anisotropy ?? null,
+    canvasAnisotropy: surface.material.map.anisotropy ?? null,
+    canvas: `${canvas.width}x${canvas.height}`,
     grassGain: Number(ground.grassGain.value.toFixed(4)),
-    anisotropy: detail?.anisotropy ?? null,
-    canvas: `${surface.material.map.image.width}x${surface.material.map.image.height}`,
+    renderBuffer: (() => { const c = document.querySelector('#app > canvas'); return c ? `${c.width}x${c.height}` : null; })(),
+    contextAntialias: (() => { const c = document.querySelector('#app > canvas'); const gl = c?.getContext('webgl2'); return gl ? Boolean(gl.getContextAttributes().antialias) : null; })(),
   };
 });
-console.log('HIGH preset facts:', JSON.stringify(facts, null, 2));
 
-// 2) Grazing close-up across the turf: where stretching/blur would show.
-const shoot = async (name, setup) => {
-  await page.evaluate(setup);
-  await delay(1800);
-  await page.screenshot({ path: `${out}/${name}.png`, timeout: 140000 });
-};
-await shoot('grass-closeup-grazing', () => {
-  const camera = window.rocketArenaPresentation.camera();
-  camera.position.set(-600, 26, 900);
-  camera.lookAt(200, 0, -1500);
-});
-// 3) Pitch overview from above: checker + team paint + uniform tiling.
-await shoot('pitch-overhead', () => {
-  const camera = window.rocketArenaPresentation.camera();
-  camera.position.set(0, 3600, 2600);
-  camera.lookAt(0, 0, 0);
-});
-// The behind-car gameplay framing is captured by the Balanced boot below
-// (its default camera tracks the car) — no need to pay for it twice here.
-
-// 5) Wind uniform advances on render (the clock hook is installed).
-const windHook = await page.evaluate(() => {
-  const blades = window.rocketArenaPresentation.world().turf.getObjectByName('Park / fine 3D grass blades');
-  return typeof blades?.onBeforeRender === 'function';
-});
-console.log('wind clock hook present:', windHook);
-
-// Free the single SwiftShader GPU process for the next boot.
-await context.close();
-
-// 6) Balanced preset in a fresh boot: the default lawn is a dense carpet too.
-const balancedContext = await browser.newContext({ viewport: { width: 800, height: 450 } });
-await balancedContext.addInitScript(() => {
-  localStorage.setItem('rocket-arena.local-graphics-presets.v1', JSON.stringify({
-    qualityPreset: 'balanced', renderScale: 0.5, showStadium: false, limitFps: true, maxFps: 30,
-  }));
-});
-const balancedPage = await balancedContext.newPage();
-balancedPage.setDefaultTimeout(150000);
-const balancedErrors = [];
-balancedPage.on('pageerror', e => { if (!isKnownSwiftShaderCarError(String(e))) balancedErrors.push(String(e).slice(0, 300)); });
-balancedPage.on('console', m => { if (m.type() === 'error' && !isKnownSwiftShaderCarError(m.text())) balancedErrors.push(m.text().slice(0, 300)); });
-await balancedPage.goto(`http://127.0.0.1:${PORT}/?physicsDebug=1`, { waitUntil: 'domcontentloaded' });
-await balancedPage.locator('.arena-home:not([hidden])').waitFor();
-await balancedPage.locator('[data-home="play"]').click();
-await balancedPage.locator('[data-home="freeplay"]').click();
-await balancedPage.waitForFunction(() => window.rocketArenaPresentation, null, { timeout: 60000 });
-await delay(5000);
-const balancedFacts = await balancedPage.evaluate(() => {
-  const world = window.rocketArenaPresentation.world();
-  const blades = world.turf.getObjectByName('Park / fine 3D grass blades');
-  return {
-    bladesPresent: Boolean(blades),
-    bladeCount: blades?.userData.bladeCount ?? 0,
-    spacing: blades?.userData.grassSpacing ?? null,
+// 1) Fresh install (no stored graphics): native-resolution default + turf facts.
+{
+  const { context, page, errors } = await boot({ stored: null });
+  const facts = await factsOf(page);
+  console.log('FRESH DEFAULT facts:', JSON.stringify(facts, null, 2));
+  const dpr = await page.evaluate(() => window.devicePixelRatio || 1);
+  const expectedBuffer = `${Math.round(1024 * dpr)}x${Math.round(576 * dpr)}`;
+  // Freeze the camera pose via updateMatrixWorld so the gameplay controller
+  // cannot drift the framing between setup and screenshot.
+  const freeze = framing => {
+    const camera = window.rocketArenaPresentation.camera();
+    camera.position.set(...framing.position);
+    camera.lookAt(...framing.target);
+    const pos = camera.position.toArray(), quat = camera.quaternion.toArray();
+    camera.updateMatrixWorld = function() {
+      this.position.fromArray(pos);
+      this.quaternion.fromArray(quat);
+      this.matrixWorld.compose(this.position, this.quaternion, this.scale);
+      this.matrixWorldInverse.copy(this.matrixWorld).invert();
+    };
   };
-});
-console.log('BALANCED preset facts:', JSON.stringify(balancedFacts));
-await balancedPage.screenshot({ path: `${out}/balanced-carpet.png`, timeout: 140000 });
-await balancedContext.close();
+  const shoot = async (name, framing) => {
+    if (framing) await page.evaluate(freeze, framing);
+    await delay(1200);
+    await page.screenshot({ path: `${out}/${name}.png`, timeout: 140000 });
+  };
+  // Grazing close-up across the pitch: where tiling/stretch would show.
+  await shoot('native-closeup', { position: [-600, 26, 900], target: [200, 0, -1500] });
+  // Overhead of the marked pitch: checker gone, markings and paint intact.
+  await shoot('native-overhead', { position: [0, 3600, 2600], target: [0, 0, 0] });
+  // The player's actual chase-camera framing, untouched.
+  await shoot('native-gameplay', null);
+  globalThis.freshFacts = { facts, errors, expectedBuffer };
+  await context.close();
+}
 
-// 7) Potato preset in a fresh boot: blades are never built at all.
-const potatoContext = await browser.newContext({ viewport: { width: 1280, height: 720 } });
-await potatoContext.addInitScript(() => {
-  localStorage.setItem('rocket-arena.local-graphics-presets.v1', JSON.stringify({
-    qualityPreset: 'potato', renderScale: 0.6, showStadium: false, limitFps: true, maxFps: 30,
-  }));
-});
-const potatoPage = await potatoContext.newPage();
-potatoPage.setDefaultTimeout(90000);
-const potatoErrors = [];
-potatoPage.on('pageerror', e => potatoErrors.push(String(e).slice(0, 300)));
-await potatoPage.goto(`http://127.0.0.1:${PORT}/?physicsDebug=1`, { waitUntil: 'domcontentloaded' });
-await potatoPage.locator('.arena-home:not([hidden])').waitFor();
-await potatoPage.locator('[data-home="play"]').click();
-await potatoPage.locator('[data-home="freeplay"]').click();
-await potatoPage.waitForFunction(() => window.rocketArenaPresentation, null, { timeout: 60000 });
-await delay(2500);
-const potatoFacts = await potatoPage.evaluate(() => {
-  const world = window.rocketArenaPresentation.world();
-  const blades = world.turf.getObjectByName('Park / fine 3D grass blades');
-  return { bladesPresent: Boolean(blades) };
-});
-console.log('POTATO preset facts:', JSON.stringify(potatoFacts));
-await potatoPage.screenshot({ path: `${out}/potato.png`, timeout: 140000 });
-await potatoContext.close();
+// 2) Legacy default upgrade: stored 0.85 (the old factory default) must render
+//    at full resolution now; a hand-picked 0.5 must survive.
+{
+  const { context, page } = await boot({ stored: { qualityPreset: 'balanced', renderScale: 0.85, showStadium: false, limitFps: true, maxFps: 60 } });
+  const upgraded = await page.evaluate(() => { const c = document.querySelector('#app > canvas'); return `${c.width}x${c.height}`; });
+  console.log('LEGACY 0.85 render buffer:', upgraded);
+  globalThis.legacyBuffer = upgraded;
+  await context.close();
 
-console.log('page errors:', errors.length ? errors.slice(0, 5) : 'none');
+  const custom = await boot({ stored: { qualityPreset: 'balanced', renderScale: 0.5, showStadium: false, limitFps: true, maxFps: 60 } });
+  const customBuffer = await custom.page.evaluate(() => { const c = document.querySelector('#app > canvas'); return `${c.width}x${c.height}`; });
+  console.log('HAND-PICKED 0.5 render buffer:', customBuffer);
+  globalThis.customBuffer = customBuffer;
+  await custom.context.close();
+}
+
+// 3) High-DPI screen: renderScale 1 must mean native device pixels (DPR 2).
+{
+  const { context, page } = await boot({ stored: null, viewport: { width: 800, height: 450 }, deviceScaleFactor: 2 });
+  const retina = await page.evaluate(() => {
+    const c = document.querySelector('#app > canvas');
+    return { dpr: window.devicePixelRatio || 1, buffer: `${c.width}x${c.height}` };
+  });
+  console.log('RETINA facts:', JSON.stringify(retina));
+  globalThis.retina = retina;
+  await context.close();
+}
+
+// 4) Potato preset in a fresh boot: no blades either, potato default scale kept.
+{
+  const { context, page, errors } = await boot({
+    stored: { qualityPreset: 'potato', renderScale: 0.6, showStadium: false, limitFps: true, maxFps: 30 },
+    viewport: { width: 1280, height: 720 },
+  });
+  const potatoFacts = await factsOf(page);
+  console.log('POTATO facts:', JSON.stringify(potatoFacts));
+  await page.screenshot({ path: `${out}/potato.png`, timeout: 140000 });
+  globalThis.potatoFacts = { facts: potatoFacts, errors };
+  await context.close();
+}
 
 await browser.close();
 server.kill();
+
+const { facts, errors, expectedBuffer } = globalThis.freshFacts;
 const failure = [];
-if (!facts.bladesPresent) failure.push('missing blade mesh on High');
-if (facts.bladeCount < 2000000) failure.push(`blade count too low: ${facts.bladeCount}`);
-if (facts.spacing !== 6) failure.push(`High spacing wrong: ${facts.spacing}`);
+if (facts.bladesPresent) failure.push('blade mesh still exists');
+if (facts.bladeMeshes) failure.push(`blade-named meshes in turf: ${facts.bladeMeshes}`);
 if (facts.detailImage !== '1024x1024') failure.push(`detail texture wrong: ${facts.detailImage}`);
+if (facts.detailAnisotropy !== 16) failure.push(`detail anisotropy wrong: ${facts.detailAnisotropy}`);
+if (facts.canvasAnisotropy !== 16) failure.push(`canvas anisotropy wrong: ${facts.canvasAnisotropy}`);
 if (facts.grassGain < 0.7 || facts.grassGain > 1.6) failure.push(`grassGain out of range: ${facts.grassGain}`);
 if (facts.canvas !== '2048x2560') failure.push(`turf canvas wrong: ${facts.canvas}`);
+if (facts.renderBuffer !== expectedBuffer) failure.push(`fresh render buffer ${facts.renderBuffer} != native ${expectedBuffer}`);
+if (globalThis.legacyBuffer !== '1024x576') failure.push(`legacy 0.85 not upgraded: ${globalThis.legacyBuffer}`);
+if (globalThis.customBuffer !== '512x288') failure.push(`hand-picked 0.5 not kept: ${globalThis.customBuffer}`);
+if (globalThis.retina.buffer !== '1600x900') failure.push(`retina buffer wrong: ${globalThis.retina.buffer} (dpr ${globalThis.retina.dpr})`);
 if (errors.length) failure.push(`page errors: ${errors[0]}`);
-if (balancedErrors.length) failure.push(`balanced page errors: ${balancedErrors[0]}`);
-if (!balancedFacts.bladesPresent || balancedFacts.bladeCount < 1200000 || balancedFacts.spacing !== 8)
-  failure.push(`balanced carpet wrong: ${JSON.stringify(balancedFacts)}`);
-if (potatoErrors.length) failure.push(`potato page errors: ${potatoErrors[0]}`);
-if (potatoFacts.bladesPresent) failure.push('potato built blades');
-console.log(failure.length ? `FAIL: ${failure.join('; ')}` : 'GRASS PASS');
+if (globalThis.potatoFacts.facts.bladesPresent) failure.push('potato built blades');
+if (globalThis.potatoFacts.errors.length) failure.push(`potato page errors: ${globalThis.potatoFacts.errors[0]}`);
+console.log(failure.length ? `FAIL: ${failure.join('; ')}` : 'TURF PASS');
 process.exit(failure.length ? 1 : 0);

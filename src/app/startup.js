@@ -721,6 +721,13 @@ async function startGame() {
     previewDirty = true;
   });
   let referencePreset = initialGraphics.qualityPreset;
+  // "1 = full resolution" from the settings panel means native device pixels,
+  // not CSS pixels: on high-DPI screens a CSS-pixel ratio would still hand the
+  // browser a sub-native buffer to blur-upscale — the "pixeleado" look.
+  // The device ratio is capped at 2 so phones cannot multiply themselves into a
+  // multi-gigapixel drawing buffer.
+  const renderPixelsPerCssPixel = scale =>
+    Math.min(2, Math.max(0.1, (window.devicePixelRatio || 1) * Math.min(1, Math.max(0.1, scale))));
   const renderGame = (scene,camera) => {
     gpuFrameTimer.begin(Ge.enabled);
     try {
@@ -742,7 +749,7 @@ async function startGame() {
     } finally { gpuFrameTimer.end(); }
   };
   (te.setSize(window.innerWidth, window.innerHeight),
-    te.setPixelRatio(initialGraphics.renderScale),
+    te.setPixelRatio(renderPixelsPerCssPixel(initialGraphics.renderScale)),
     (te.shadowMap.enabled = quality.shadows),
     (te.shadowMap.type = ka),
     (te.shadowMap.autoUpdate = !1),
@@ -767,7 +774,7 @@ async function startGame() {
     referencePreset = W.qualityPreset;
     referenceLighting.dirty = true;
     Object.assign(quality, localQualityProfile(W.qualityPreset));
-    te.setPixelRatio(W.renderScale);
+    te.setPixelRatio(renderPixelsPerCssPixel(W.renderScale));
     te.shadowMap.enabled = quality.shadows; te.shadowMap.needsUpdate = true;
     if (!quality.shadows) N.releaseShadowMaps();
     te.toneMappingExposure = quality.exposure;
@@ -782,8 +789,6 @@ async function startGame() {
     if (quality.effects) N.scene.add(N.ballSpeedTrail.object);
     else { N.resetBallTrail(); N.ballSpeedTrail.object.removeFromParent(); }
     N.scene.traverse(object => {
-      // Fine 3D grass is geometry Potato cannot afford; other presets keep it.
-      if (object.name === 'Park / fine 3D grass blades') object.visible = W.qualityPreset !== 'potato';
       for (const material of Array.isArray(object.material) ? object.material : [object.material])
         if (material) {
           setParkBankQuality(material, W.qualityPreset);

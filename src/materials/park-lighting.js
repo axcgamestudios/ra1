@@ -44,17 +44,22 @@ float contactShade(vec2 point, vec4 subject, bool ball) {
 }
 vec3 shadeParkGround(vec3 pigment) {
   // The user-supplied 1024px grass photo is the ACTUAL base color of every
-  // green turf pixel: it is sampled in world space at ~256 UU per repeat, so
+  // green turf pixel: it is sampled in world space at 160 UU per repeat, so
   // every texel of the source survives (no canvas resampling, no resolution
-  // loss) and square texels on square world tiles never stretch. A second
-  // rotated, incommensurate octave breaks visible repetition. The painted mow
-  // checker is fully replaced by the photo; white markings and the blue/orange
-  // team zones (low green dominance) keep their painted look.
+  // loss), square texels on square world tiles never stretch, and the closest
+  // gameplay view resolves the photo at ~1 texel per pixel. A second rotated,
+  // incommensurate octave breaks visible repetition. The painted mow checker
+  // is fully replaced by the photo; white markings and the blue/orange team
+  // zones (low green dominance) keep their painted look.
   float greenMask=smoothstep(.01,.055,pigment.g-max(pigment.r,pigment.b));
   float saturation=(pigment.g-min(pigment.r,pigment.b))/max(pigment.g,.001);
   greenMask*=smoothstep(.22,.4,saturation);
-  vec2 grassUvA=parkGroundPosition.xz/256.;
-  vec2 grassUvB=parkGrassRotate(parkGroundPosition.xz)/469.;
+  // Tile density: the lowest gameplay camera resolves ~0.13-0.19 UU per pixel
+  // on the closest turf strip, so a 160 UU repeat puts the 1024px photo at
+  // ~0.85-1.2 texels per pixel right where the eye lands — photo-native
+  // sharpness instead of the mip smear a 256 UU repeat gave there.
+  vec2 grassUvA=parkGroundPosition.xz/160.;
+  vec2 grassUvB=parkGrassRotate(parkGroundPosition.xz)/293.;
   vec3 grassA=texture2D(parkGrassDetail,grassUvA).rgb;
   vec3 grassB=texture2D(parkGrassDetail,grassUvB).rgb;
   // World-space value noise rotates the octave blend weight across the field
