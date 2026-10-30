@@ -43,6 +43,29 @@ function measureGrassDetailMean(image) {
   }
 }
 
+// Mean linear luminance of the painted canvas' GREEN pixels only (markings
+// and team zones excluded): the exposure the field used to carry. The photo
+// is gain-matched to it so swapping the base color keeps the scene calibrated.
+function measureCanvasGreenMean(canvas) {
+  try {
+    const thumb = document.createElement('canvas');
+    thumb.width = 128; thumb.height = 160;
+    const context = thumb.getContext('2d');
+    context.drawImage(canvas, 0, 0, 128, 160);
+    const data = context.getImageData(0, 0, 128, 160).data;
+    let sum = 0, green = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      if (data[i + 1] > data[i] && data[i + 1] > data[i + 2]) {
+        sum += 0.299 * GRASS_SRGB_LUT[data[i]] + 0.587 * GRASS_SRGB_LUT[data[i + 1]] + 0.114 * GRASS_SRGB_LUT[data[i + 2]];
+        green++;
+      }
+    }
+    return green ? sum / green : 0.098;
+  } catch {
+    return 0.098;
+  }
+}
+
 const SS = 120.507;
 
 const wS = 86.6994;
@@ -232,10 +255,13 @@ async function loadParkArt(turf, quality) {
   const surface = turf.getObjectByName("Park / painted playing surface");
   const ground = surface.material.userData.parkGround;
   ground.detail.value = detail;
-  ground.grassMean.value = measureGrassDetailMean(detail.image);
-  // Fine 3D blades over the painted pitch: colors follow the mow checker,
-  // team paint and markings; contact shadows are shared with the turf.
-  const blades = createGrassField(quality, hg.get(turf)?.[0]?.base, ground);
+  // Gain-match the photo base to the exposure the painted green carried.
+  const paintedGreenMean = measureCanvasGreenMean(hg.get(turf)?.[0]?.base);
+  const photoMean = measureGrassDetailMean(detail.image);
+  ground.grassGain.value = Math.min(1.6, Math.max(0.7, paintedGreenMean / Math.max(photoMean, .001)));
+  // Fine 3D blades over the pitch: a dense carpet whose colors come from the
+  // same canvas + photo composite as the surface; contact shadows are shared.
+  const blades = createGrassField(quality, ground, hg.get(turf)?.[0]?.texture, detail);
   if (blades) turf.add(blades);
   groundAO.colorSpace='';groundAO.flipY=false;
   turf.getObjectByName("Park / painted playing surface").material.userData.parkGround.v2GroundAO.value=groundAO;

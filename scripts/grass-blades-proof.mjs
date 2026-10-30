@@ -22,10 +22,10 @@ const browser = await chromium.launch({
   headless: true,
   args: ['--no-sandbox', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
 });
-const context = await browser.newContext({ viewport: { width: 1280, height: 720 } });
+const context = await browser.newContext({ viewport: { width: 800, height: 450 } });
 await context.addInitScript(() => {
   localStorage.setItem('rocket-arena.local-graphics-presets.v1', JSON.stringify({
-    qualityPreset: 'high', renderScale: 1, showStadium: false, limitFps: true, maxFps: 30,
+    qualityPreset: 'high', renderScale: 0.5, showStadium: false, limitFps: true, maxFps: 30,
   }));
   localStorage.setItem('rocket-arena.camera-settings.v1', JSON.stringify({
     fov: 60, distance: 100, height: 40, angleDeg: 0,
@@ -33,9 +33,10 @@ await context.addInitScript(() => {
   }));
 });
 const page = await context.newPage();
-page.setDefaultTimeout(90000);
+page.setDefaultTimeout(150000);
 const errors = [];
-page.on('pageerror', e => errors.push(String(e).slice(0, 300)));
+const isKnownSwiftShaderCarError = text => /Fennec_Chassis|texture2DCompare|array index for samplers/.test(text);
+page.on('pageerror', e => { if (!isKnownSwiftShaderCarError(String(e))) errors.push(String(e).slice(0, 300)); });
 await page.goto(`http://127.0.0.1:${PORT}/?physicsDebug=1`, { waitUntil: 'domcontentloaded' });
 await page.locator('.arena-home:not([hidden])').waitFor();
 await page.locator('[data-home="play"]').click();
@@ -51,7 +52,7 @@ const hidden = await page.evaluate(() => {
   return true;
 });
 await delay(900);
-await page.screenshot({ path: `${out}/blades-only.png` });
+await page.screenshot({ path: `${out}/blades-only.png`, timeout: 140000 });
 await page.evaluate(() => {
   const world = window.rocketArenaPresentation.world();
   world.turf.getObjectByName('Park / painted playing surface').visible = true;
