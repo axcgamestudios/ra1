@@ -5,7 +5,9 @@ import { PARK_BANK_FRAGMENT } from '../materials/park-bank.js';
 export const PARK_ART = Object.freeze({
   panorama: '/assets/arena/park/park-panorama.webp',
   pitch: '/assets/arena/park/park-pitch-clean.webp',
-  detail: '/assets/arena/park/park-grass-detail.webp',
+  // The user-supplied 1024px grass photo (textura-pasto.jpeg, made seamlessly
+  // tileable at full resolution) — sampled in world space by the turf shader.
+  detail: '/assets/arena/park/park-grass-pasto.webp',
   bank: '/assets/arena/stadium/bank-metal.webp',
   trees: '/assets/arena/park/park-poplars.webp',
   horizon: '/assets/arena/park/park-horizon.webp',

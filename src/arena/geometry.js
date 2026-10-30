@@ -7,6 +7,7 @@ import { ho as GLTFLoader } from "../vendor/gltf-loader.js";
 import { createParkFlags } from "./park-flags.js";
 import { createParkTurfMaterial } from "../materials/park-lighting.js";
 import { PARK_ART, createParkBackdrop, createParkBankMaterial, createParkBoostPad, createParkFence, createParkHorizon, createParkScenery, createParkTrees, mapParkBankUVs, paintParkPadMarks, paintParkPitch } from "./park.js";
+import { createGrassField } from "./grass-field.js";
 import { Ao, Ct, Ee, F, Gi, Hm, Hs, Ht, Ke, Lt, Ne, Nm, Qt, Tn, Ur, Ut, Wa, Xt, Zm, bd, ci, cn, dt, jn, li, lt, pr, qt, ui, zm } from "../vendor/three.js";
 import { hb, hl } from "../vendor/buffer-geometry-utils.js";
 import { Ji, Vi, vn } from "../rendering/theme-materials.js";
@@ -18,6 +19,29 @@ import { withRetry, fetchWithRetry } from "../core/net-retry.js";
 // boot with a generic "Failed to start" screen.
 const loadTextureWithRetry = url => withRetry(() => new Ao().loadAsync(url), { attempts: 3, label: 'arena texture' });
 const loadGLTFWithRetry = url => withRetry(() => new GLTFLoader().loadAsync(url), { attempts: 3, label: 'arena prop' });
+
+// Mean linear luminance of the grass detail texture, measured from a 128px
+// thumbnail. Centers the shader's blade modulation on the actual asset.
+const GRASS_SRGB_LUT = new Float32Array(256);
+for (let i = 0; i < 256; i++) {
+  const c = i / 255;
+  GRASS_SRGB_LUT[i] = c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+}
+function measureGrassDetailMean(image) {
+  try {
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = 128;
+    const context = canvas.getContext('2d');
+    context.drawImage(image, 0, 0, 128, 128);
+    const data = context.getImageData(0, 0, 128, 128).data;
+    let sum = 0;
+    for (let i = 0; i < data.length; i += 4)
+      sum += 0.299 * GRASS_SRGB_LUT[data[i]] + 0.587 * GRASS_SRGB_LUT[data[i + 1]] + 0.114 * GRASS_SRGB_LUT[data[i + 2]];
+    return sum / (data.length / 4);
+  } catch {
+    return 0.098;
+  }
+}
 
 const SS = 120.507;
 
@@ -128,9 +152,11 @@ const Fi = 8192;
 
 const Di = 10240;
 
-const dr = 1536;
+// Painted turf canvas: 2048x2560 keeps the markings crisp while the fine
+// grass detail itself lives in the full-resolution shader-sampled texture.
+const dr = 2048;
 
-const Ri = 1920;
+const Ri = 2560;
 
 const hg = new WeakMap();
 
@@ -166,7 +192,7 @@ function Tp(artwork) {
   const texture = new bd(canvas);
   texture.name = "Park / painted checker turf and regulation markings";
   texture.colorSpace = Ht; texture.minFilter = pr; texture.magFilter = qt;
-  texture.anisotropy = 4;
+  texture.anisotropy = 8;
   return texture;
 }
 
@@ -182,7 +208,7 @@ function GS() {
   return group;
 }
 
-async function loadParkArt(turf) {
+async function loadParkArt(turf, quality) {
   const exteriorReady = Promise.all([
     loadTextureWithRetry(PARK_ART.city), loadTextureWithRetry(PARK_ART.landShade),
     loadTextureWithRetry(PARK_ART.landscapeDetail), loadTextureWithRetry(PARK_ART.landscapeReflection),
@@ -202,8 +228,15 @@ async function loadParkArt(turf) {
   }
   grass.dispose();
   detail.wrapS = detail.wrapT = ci;
-  detail.colorSpace = Ht; detail.anisotropy = 2;
-  turf.getObjectByName("Park / painted playing surface").material.userData.parkGround.detail.value = detail;
+  detail.colorSpace = Ht; detail.anisotropy = 8;
+  const surface = turf.getObjectByName("Park / painted playing surface");
+  const ground = surface.material.userData.parkGround;
+  ground.detail.value = detail;
+  ground.grassMean.value = measureGrassDetailMean(detail.image);
+  // Fine 3D blades over the painted pitch: colors follow the mow checker,
+  // team paint and markings; contact shadows are shared with the turf.
+  const blades = createGrassField(quality, hg.get(turf)?.[0]?.base, ground);
+  if (blades) turf.add(blades);
   groundAO.colorSpace='';groundAO.flipY=false;
   turf.getObjectByName("Park / painted playing surface").material.userData.parkGround.v2GroundAO.value=groundAO;
   const [cityAtlas, landShade, landDetail, landReflection, frozenWater, props] = exterior;

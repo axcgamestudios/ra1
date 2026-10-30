@@ -782,6 +782,8 @@ async function startGame() {
     if (quality.effects) N.scene.add(N.ballSpeedTrail.object);
     else { N.resetBallTrail(); N.ballSpeedTrail.object.removeFromParent(); }
     N.scene.traverse(object => {
+      // Fine 3D grass is geometry Potato cannot afford; other presets keep it.
+      if (object.name === 'Park / fine 3D grass blades') object.visible = W.qualityPreset !== 'potato';
       for (const material of Array.isArray(object.material) ? object.material : [object.material])
         if (material) {
           setParkBankQuality(material, W.qualityPreset);

@@ -10,7 +10,11 @@ uniform float parkV2Contact;
 uniform float parkContactAO;
 uniform vec3 parkLightDirection;
 uniform float parkReferenceLook;
+uniform float parkGrassMean;
 varying vec3 parkGroundPosition;
+vec2 parkGrassRotate(vec2 p){
+  return vec2(p.x*.70710678-p.y*.70710678,p.x*.70710678+p.y*.70710678);
+}
 float contactShade(vec2 point, vec4 subject, bool ball) {
   float altitude = max(0., subject.z - (ball ? parkBallRadius : 17.));
   float visibility = (1. - smoothstep(120., 1800., altitude));
@@ -46,9 +50,22 @@ vec3 shadeParkGround(vec3 pigment) {
   float luminance=dot(pigment,vec3(.2126,.7152,.0722));
   vec3 vividGrass=max(vec3(0.),mix(vec3(luminance),pigment,1.32))*1.22;
   pigment=mix(pigment,vividGrass,greenMask*(1.-parkReferenceLook));
-  // One 256px mipmapped tile adds close grass blades; no geometry or normal map.
-  float grass=texture2D(parkGrassDetail,parkGroundPosition.xz/512.).r;
-  pigment *= 1. + (grass - .214) * .68;
+  // The user-supplied 1024px grass photo, tiled in world space at ~256 UU per
+  // repeat: every texel of the source survives (no canvas resampling, so no
+  // resolution loss) and square texels on square world tiles never stretch.
+  // A second rotated, incommensurate octave breaks visible repetition.
+  vec2 grassUvA=parkGroundPosition.xz/256.;
+  vec2 grassUvB=parkGrassRotate(parkGroundPosition.xz)/469.;
+  vec3 grassA=texture2D(parkGrassDetail,grassUvA).rgb;
+  vec3 grassB=texture2D(parkGrassDetail,grassUvB).rgb;
+  float bladeA=dot(grassA,vec3(.299,.587,.114));
+  float bladeB=dot(grassB,vec3(.299,.587,.114));
+  float blade=mix(bladeA,bladeB,.5);
+  pigment*=1.+(blade-parkGrassMean)*.92;
+  // Chroma from the photo leans living grass greener; only on green turf,
+  // white markings and team paint keep their original hue.
+  vec3 bladeChroma=grassA/max(bladeA,.001);
+  pigment=mix(pigment,pigment*bladeChroma*1.18,.14*greenMask);
   float shadow = 0.;
   shadow = max(shadow, contactShade(parkGroundPosition.xz, parkContact[0], true));
   shadow = max(shadow, contactShade(parkGroundPosition.xz, parkContact[1], false));
@@ -72,7 +89,7 @@ vec3 shadeParkGround(vec3 pigment) {
 export function createParkTurfMaterial(T, texture, detail = texture) {
   const contacts = new Float32Array(CONTACT_SHADOW_SLOTS * 4);
   for (let i = 0; i < CONTACT_SHADOW_SLOTS; i++) contacts[i * 4 + 2] = 1e7;
-  const state = { contacts, ballRadius: { value: 92.75 }, detail: { value: detail }, v2GroundAO:{value:null},v2Contact:{value:0},contactAO:{value:.53},lightDirection:{value:new T.Vector3(-.48,.83,.29).normalize()} };
+  const state = { contacts, ballRadius: { value: 92.75 }, detail: { value: detail }, grassMean: { value: 0.098 }, v2GroundAO:{value:null},v2Contact:{value:0},contactAO:{value:.53},lightDirection:{value:new T.Vector3(-.48,.83,.29).normalize()} };
   state.referenceLook = { value: 0 };
   const material = new T.MeshBasicMaterial({
     name: 'Park / reference daylight turf with contact shadows',
@@ -92,6 +109,7 @@ export function createParkTurfMaterial(T, texture, detail = texture) {
     shader.uniforms.parkContactAO = state.contactAO;
     shader.uniforms.parkLightDirection = state.lightDirection;
     shader.uniforms.parkReferenceLook = state.referenceLook;
+    shader.uniforms.parkGrassMean = state.grassMean;
     shader.vertexShader = shader.vertexShader.replace('#include <common>',
       '#include <common>\nvarying vec3 parkGroundPosition;');
     shader.vertexShader = shader.vertexShader.replace('#include <begin_vertex>',
@@ -101,7 +119,7 @@ export function createParkTurfMaterial(T, texture, detail = texture) {
     shader.fragmentShader = shader.fragmentShader.replace('#include <color_fragment>',
       '#include <color_fragment>\ndiffuseColor.rgb=shadeParkGround(diffuseColor.rgb);');
   };
-  material.customProgramCacheKey = () => 'park-reference-contact-v4-vivid-grass';
+  material.customProgramCacheKey = () => 'park-reference-contact-v5-pasto-grass';
   return material;
 }
 

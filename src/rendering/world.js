@@ -202,7 +202,7 @@ class GameWorld {
   }
   async loadArena() {
     const [boundary, scenery, backdrop] = await Promise.all([
-      WS(), this.stadiumVisible ? JS() : null, loadParkArt(this.turf),
+      WS(), this.stadiumVisible ? JS() : null, loadParkArt(this.turf, this.quality),
     ]);
     this.sky.removeFromParent(); this.sky = backdrop;
     this.parkProps = backdrop.getObjectByName('Park / supplied 3D gardens and stone banks');
