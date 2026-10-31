@@ -60,7 +60,7 @@ function confetti(team, count = 18) {
   return `<div class="arena-victory__confetti" data-team="${team === 1 ? 'orange' : 'blue'}" aria-hidden="true">${pieces}</div>`;
 }
 
-// Rocket League style full-time screen copied from the winner-screen video:
+// Rocket Ball style full-time screen copied from the winner-screen video:
 // a small WINNER caption over the huge glowing team name, the MVP line, angled
 // player nameplates with RL flavor titles, the final score, and the stats
 // tables below. Used by the offline match end; the online result screen

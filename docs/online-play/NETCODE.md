@@ -1,10 +1,10 @@
 # Online movement and latency — protocol v2
 
-Implementation/research date: 2026-09-17. This is an independently implemented improvement, **not Rocket League's exact netcode**. Online-only adapters change; the native WASM, collision geometry, handling constants, camera code, graphics presets, car assets, offline Bots and Free Play are not replaced.
+Implementation/research date: 2026-09-17. This is an independently implemented improvement, **not the original game's exact netcode**. Online-only adapters change; the native WASM, collision geometry, handling constants, camera code, graphics presets, car assets, offline Bots and Free Play are not replaced.
 
 ## What the research supports
 
-- Rocket League's official [v1.58 notes, 2019-02-19](https://www.rocketleague.com/news/patch-notes-v1-58) describe STS/CSTS: subtle client simulation timing feedback to maintain a smooth input stream. They do not publish enough parameters/source to reproduce the complete current algorithm. Our bounded +/-2% input-clock feedback is our own configuration, not an asserted match to theirs.
+- The original game's official [v1.58 notes, 2019-02-19](https://www.rocketleague.com/news/patch-notes-v1-58) describe STS/CSTS: subtle client simulation timing feedback to maintain a smooth input stream. They do not publish enough parameters/source to reproduce the complete current algorithm. Our bounded +/-2% input-clock feedback is our own configuration, not an asserted match to theirs.
 - Glenn Fiedler's [State Synchronization](https://gafferongames.com/post/state_synchronization/) describes input/state synchronization, jitter buffers, immediate physics corrections and separate render-only position/orientation error decay. It explicitly describes this approach as approximate. We use these principles rather than smoothing fictional physics positions into the authoritative simulation.
 - His [Snapshot Interpolation](https://gafferongames.com/post/snapshot_interpolation/) explains buffering, velocity-aware Hermite interpolation, quaternion interpolation, and the limits of unreliable extrapolation. Our playback coordinates are server ticks, not packet arrival timestamps.
 - Epic's [Networked Physics Overview](https://dev.epicgames.com/documentation/en-us/unreal-engine/networked-physics-overview) distinguishes predictive interpolation and resimulation approaches. Full rollback needs more state/history than the current shipped pose/velocity setters expose. No claim of complete internal-state rollback is made here.

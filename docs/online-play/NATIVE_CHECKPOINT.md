@@ -1,12 +1,12 @@
 # Negotiated native gameplay checkpoints
 
-Date: 2026-09-17. This adds server-confirmed Soccar gameplay state to the online prediction path. It is not Rocket League's proprietary networking and **not full Bullet manifold/solver rollback**. The existing offline `rocketsim-core.wasm` remains byte-for-byte unchanged.
+Date: 2026-09-17. This adds server-confirmed Soccar gameplay state to the online prediction path. It is not the original game's proprietary networking and **not full Bullet manifold/solver rollback**. The existing offline `rocketsim-core.wasm` remains byte-for-byte unchanged.
 
 ## Why pose-only restoration was insufficient
 
 The prior setter constructed a new `CarState` from position, rotation and velocity plus a few inferred flags. That lost jump/flip timers, previous controls, boost timing, ball-hit state and boost-pad locks/cooldowns. Rendering a correction more softly does not fix a physics simulation restarted with the wrong jump state.
 
-The original application wrapper and the exact pinned engine source were recovered from Malik's prior `checkpoint-03-car-soccer-ui-sunlight.zip`. That package's gameplay WASM SHA-256 matches the shipped `4d3b9c9f...` binary. The builder verifies the original wrapper hash, all 275 upstream source files, the RocketSim commit and Emscripten 4.0.10. Original RocketSim/Bullet licenses and notices apply. No game assets or proprietary Rocket League source were acquired.
+The original application wrapper and the exact pinned engine source were recovered from Malik's prior `checkpoint-03-car-soccer-ui-sunlight.zip`. That package's gameplay WASM SHA-256 matches the shipped `4d3b9c9f...` binary. The builder verifies the original wrapper hash, all 275 upstream source files, the RocketSim commit and Emscripten 4.0.10. Original RocketSim/Bullet licenses and notices apply. No game assets or proprietary source from the original game were acquired.
 
 `native/network-state.cpp` adds capture and atomic restoration without editing the original gameplay algorithms. It preserves exposed jump/flip/boost state, controls, contacts, hit timing, pad state, native ticks and audiovisual event counters. The parser validates every record before mutating any native object and remaps car references to the recipient's local slot order. Only the trusted server emits these checkpoints. Client messages still cannot submit positions, results or native state.
 

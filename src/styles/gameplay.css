@@ -442,9 +442,9 @@ button:disabled {
   content: "";
   position: absolute;
   inset: -2%;
-  /* User-supplied Rocket League promo photo (blue car + orange car + ball),
+  /* User-supplied promo photo (blue car + orange car + ball),
      upscaled Lanczos with grain treatment in scripts/loading-photo-v2.py */
-  background: url('/assets/ui/rocket-league-promo.webp') center / cover no-repeat;
+  background: url('/assets/ui/rocket-ball-promo.webp') center / cover no-repeat;
   filter: saturate(1.02);
   transform: scale(1.025);
   animation: load-photo-drift 26s ease-in-out infinite alternate;
@@ -521,15 +521,6 @@ button:disabled {
 .load__title span {
   color: #42ccff;
   text-shadow: 0 0 28px #10bffc73;
-}
-/* Registered-trademark mark hugging the wordmark, RL title-screen style. */
-.load__reg {
-  font: 700 .16em/1 var(--sans);
-  letter-spacing: 0;
-  vertical-align: super;
-  margin-left: .06em;
-  color: #dceeff;
-  text-shadow: 0 2px 10px #000c;
 }
 /* "PRESS ANY BUTTON TO START": hidden while loading, breathing once ready. */
 .load__press {
@@ -688,7 +679,7 @@ button:disabled {
   font: 500 12px/1.5 var(--sans);
   overflow-wrap: anywhere;
 }
-/* Rotating gameplay tips, Rocket League loading-screen style. */
+/* Rotating gameplay tips, Rocket Ball loading-screen style. */
 #loading .load__tip {
   min-height: 18px;
   margin: 10px 0 0;

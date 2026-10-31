@@ -1,4 +1,4 @@
-// Boost gauge, Rocket League flavour: a gradient arc that sweeps with the
+// Boost gauge, Rocket Ball flavour: a gradient arc that sweeps with the
 // tank level, a rotating dashed rim, a pulsing flare behind the figure,
 // spark particles while firing, a low-boost warning state and a golden
 // shimmer when the tank is full or unlimited. State changes alone update

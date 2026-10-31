@@ -10,9 +10,9 @@ export function mountHome(root, actions) {
   const panel = document.createElement('section');
   panel.className = 'arcade-home arena-home';
   panel.hidden = true;
-  panel.setAttribute('aria-label', 'Rocket League home');
+  panel.setAttribute('aria-label', 'Rocket Ball home');
   panel.innerHTML = `
-    <header class="arena-home__header"><img class="arena-home__logo" src="/assets/ui/rocket-arena-mark.webp" width="1254" height="1254" alt=""><div class="arcade-brand">ROCKET <span>LEAGUE</span></div></header>
+    <header class="arena-home__header"><img class="arena-home__logo" src="/assets/ui/rocket-arena-mark.webp" width="1254" height="1254" alt=""><div class="arcade-brand">ROCKET <span>BALL</span></div></header>
     <div class="arena-home__account" aria-label="axc account">
       <p class="arena-home__axcnet" data-home-axcnet hidden></p>
       <div class="arena-home__chip" data-home-chip></div>
@@ -41,7 +41,7 @@ export function mountHome(root, actions) {
   (root.querySelector('.hud-tools') ?? root).append(homeButton);
   root.append(panel);
   // Player card mirrors the axc account name (SSO) or the saved online
-  // display name plus the local level, Rocket League style.
+  // display name plus the local level, Rocket Ball style.
   const syncPlayerCard = () => {
     try { panel.querySelector('[data-home-player]').textContent = (accountPlayerName() || 'PLAYER').toUpperCase(); } catch {}
     try { panel.querySelector('[data-home-level]').textContent = 'LVL ' + playerLevel(); } catch {}

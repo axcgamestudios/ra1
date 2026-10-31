@@ -1,5 +1,5 @@
 // A small menu above the frozen arena; simulation ownership stays with the game.
-// Rocket League pause layout: PAUSED title, five stacked menu rows (RESUME GAME
+// Rocket Ball pause layout: PAUSED title, five stacked menu rows (RESUME GAME
 // first, highlighted), a contextual hint top-left ("PRESS BACKSPACE TO RESET
 // BALL" in free play) and the player card with CREATE PARTY bottom-left.
 import { Ks } from '../input/controller-selection.js';

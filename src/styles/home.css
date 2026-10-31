@@ -3,7 +3,7 @@
 #app .arcade-home.arena-home { position:absolute; inset:0; display:block; padding:clamp(20px,3.2vw,58px); overflow:hidden; background:transparent; border:0; box-shadow:none; cursor:grab; touch-action:none; user-select:none; color:#fff; font-family:"Arial Narrow","Roboto Condensed",Arial,sans-serif; }
 #app .arena-home [hidden], #app .arena-home[hidden] { display:none!important; }
 #app .arena-home.is-orbiting { cursor:grabbing; }
-/* Rocket League wordmark: white ROCKET over a warm metallic LEAGUE with glow. */
+/* Rocket Ball wordmark: white ROCKET over a warm metallic BALL with glow. */
 .arena-home .arcade-brand > span { background:linear-gradient(180deg,#ffe2a6,#ff9d3d); -webkit-background-clip:text; background-clip:text; color:transparent; filter:drop-shadow(0 2px 8px #ff8c3659); }
 /* Player card, top-right, RL style: angled card with a level badge. */
 .arena-home__player { position:absolute; z-index:2; top:clamp(14px,2.8vh,32px); right:clamp(22px,3.2vw,58px); display:grid; gap:5px; text-align:right; padding:12px 18px 12px 30px;

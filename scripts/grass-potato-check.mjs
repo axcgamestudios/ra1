@@ -14,7 +14,10 @@ await context.addInitScript(() => {
 const page = await context.newPage();
 page.setDefaultTimeout(90000);
 const errors = [];
-page.on('pageerror', e => errors.push(String(e).slice(0, 300)));
+// Known SwiftShader limitation (see grass-verify.mjs): the Fennec chassis
+// shadow material uses a dynamically indexed sampler array. Unrelated here.
+const isKnownSwiftShaderCarError = text => /Fennec_Chassis|texture2DCompare|array index for samplers/.test(text);
+page.on('pageerror', e => { if (!isKnownSwiftShaderCarError(String(e))) errors.push(String(e).slice(0, 300)); });
 await page.goto(`http://127.0.0.1:${PORT}/?physicsDebug=1`, { waitUntil: 'domcontentloaded' });
 await page.locator('.arena-home:not([hidden])').waitFor();
 await page.locator('[data-home="play"]').click();

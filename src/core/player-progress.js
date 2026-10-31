@@ -1,5 +1,5 @@
 // Local player progression: counts finished matches and team wins, derives a
-// Rocket League style level for the home player card, and feeds the
+// Rocket Ball style level for the home player card, and feeds the
 // scoreboard's WINS rails. Purely cosmetic, stored locally.
 import { createSettingsStore } from './settings-store.js';
 

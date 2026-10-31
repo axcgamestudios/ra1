@@ -34,7 +34,7 @@ No real provider project, account configuration or public server deployment was 
 
 Live GitHub/Supabase consent, registration/recovery, provider-backed Ranked results and persistence after a real deployment restart, full human Internet matches, sustained adverse-network tests, comprehensive aerial/flip-reset prediction quality, backup restoration, physical controllers/touch and low-end-device performance remain unverified. Private invite matches and the durable result journal **are implemented**; persistent parties, Ranked premades and empirically calibrated competitive thresholds are not.
 
-A crash after journal commit is recoverable without double-awarding. An outage/process loss before the first journal write can still leave the match no-contest. Local prediction remains approximate because the native ABI does not expose complete rollback state. The rank model is Arena Team Elo v1, not Rocket League's unpublished exact MMR. Original artwork uses game meshes in new compositions and is not pixel-identical to the old Casual/Free Play cards.
+A crash after journal commit is recoverable without double-awarding. An outage/process loss before the first journal write can still leave the match no-contest. Local prediction remains approximate because the native ABI does not expose complete rollback state. The rank model is Arena Team Elo v1, not the original game's unpublished exact MMR. Original artwork uses game meshes in new compositions and is not pixel-identical to the old Casual/Free Play cards.
 
 Keep the PR in draft and leave `main`/its Pages deployment unchanged until the owner approves release. See `DEPLOYMENT.md` and `PRIVATE_ROOMS_AND_RECOVERY.md`.
 

@@ -1,6 +1,6 @@
 # Rocket Arena
 
-A browser Rocket League-style car soccer game: deterministic RocketSim WASM physics at 120 Hz, Three.js rendering, ONNX bot opponents, and **peer-to-peer online 1v1 matches over WebRTC (PeerJS)** — no game server required.
+A browser Rocket Ball car soccer game: deterministic RocketSim WASM physics at 120 Hz, Three.js rendering, ONNX bot opponents, and **peer-to-peer online 1v1 matches over WebRTC (PeerJS)** — no game server required.
 
 **Play it:** deployed to GitHub Pages at `https://axcgamestudios.github.io/ra1/` (this repository).
 
@@ -17,7 +17,7 @@ Both players must use the default (experimental) physics build — the handshake
 
 ## Controls
 
-Keyboard and mouse defaults match Rocket League:
+Keyboard and mouse defaults match Rocket Ball:
 
 | Action | Binding |
 | --- | --- |
@@ -30,7 +30,7 @@ Keyboard and mouse defaults match Rocket League:
 | Ball cam toggle | Space |
 | Reset shot (training) | Backspace |
 
-Gamepad defaults also mirror Rocket League (RT throttle, LT reverse, A jump, B boost, X powerslide/air roll, Y ball cam, right stick camera). Everything is rebindable in Settings → Controls. Camera defaults match Rocket League (110° FOV, distance 270, height 100, angle -3, stiffness 0.45, swivel 4.0, camera shake on).
+Gamepad defaults also mirror Rocket Ball (RT throttle, LT reverse, A jump, B boost, X powerslide/air roll, Y ball cam, right stick camera). Everything is rebindable in Settings → Controls. Camera defaults match Rocket Ball (110° FOV, distance 270, height 100, angle -3, stiffness 0.45, swivel 4.0, camera shake on).
 
 Offline modes: **Bots** (Seer / Necto / Nexto ONNX policies, three difficulties) and **Free Play** work without any connection. Bots fall back to single-threaded inference where cross-origin isolation is unavailable (e.g. GitHub Pages).
 

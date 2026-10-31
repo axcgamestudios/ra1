@@ -16,7 +16,7 @@ The tested source integration is `03f4dc420188fc3c4b86301f811a900c59c7a570`. It 
 
 ## Research and what it does not establish
 
-[Rocket League v1.58, 2019-02-19](https://www.rocketleague.com/news/patch-notes-v1-58) documents STS/CSTS input-buffering/timing feedback. That supports a bounded feedback principle, not exact current Rocket League code or parameters.
+[Original game v1.58 notes, 2019-02-19](https://www.rocketleague.com/news/patch-notes-v1-58) documents STS/CSTS input-buffering/timing feedback. That supports a bounded feedback principle, not exact current original-game code or parameters.
 
 [Riot's VALORANT consistency investigation, 2022-04-15](https://playvalorant.com/en-us/news/game-updates/valorant-gameplay-consistency-update/) explicitly discusses uneven input bursts, jitter buffering, cyclic latency adjustment and slow recovery after alt-tab frame throttling. That motivated testing suspension recovery and separating the server/input clock from presentation stalls. We do not import shooter hit-rewind behavior into this car/ball game.
 

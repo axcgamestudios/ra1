@@ -221,7 +221,7 @@ export function createSketchfabModels({ Group, Mesh, Vector3, Box3, makeMaterial
   }
   async function loadBall(radius = 92.75) {
     ball ??= load('/assets/sketchfab/ball/model.glb').then(({scene})=>{
-      const root = new Group(); root.name = 'Rocket League ball';
+      const root = new Group(); root.name = 'Rocket Ball ball';
       prepare(scene, makeBallMaterial).forEach(mesh=>root.add(mesh));
       // The source sphere's origin is its physical center; use vertex radius,
       // not its asymmetrical panel bounds, to keep collision and spin aligned.

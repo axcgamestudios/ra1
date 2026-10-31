@@ -23,7 +23,7 @@ export function validSequence(seq) { return Number.isSafeInteger(seq) && seq >= 
 export function validName(value) {
     if (typeof value !== 'string' || value !== value.normalize('NFKC') || value !== value.trim())
         return false;
-    return /^[\p{L}\p{N}][\p{L}\p{N} _-]{1,23}$/u.test(value) && !/^(admin|system|moderator|support|rocket[ _-]?(?:arena|league))(?:\b|[_\d-])/iu.test(value);
+    return /^[\p{L}\p{N}][\p{L}\p{N} _-]{1,23}$/u.test(value) && !/^(admin|system|moderator|support|rocket[ _-]?(?:arena|league|ball))(?:\b|[_\d-])/iu.test(value);
 }
 export function readMessage(raw) {
     if (typeof raw !== 'string' || raw.length > 8192)

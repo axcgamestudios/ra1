@@ -104,7 +104,7 @@
 @media(max-width:640px) { #app .online-bot-fill { gap:6px; } #app .online-bot-add { flex:1 1 40%; } }
 
 /* ------------------------------------------------------- announcer banner ---- */
-/* Rocket League style: skewed slab text with a vertical gradient fill, a
+/* Rocket Ball style: skewed slab text with a vertical gradient fill, a
    bright rim, a hard drop shadow and an angled accent bar that sweeps in.
    Each event kind carries its own palette via --ann-* custom properties. */
 #app .announcer-banner { position:fixed;left:50%;top:23%;transform:translateX(-50%);z-index:60;

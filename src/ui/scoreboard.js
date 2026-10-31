@@ -1,4 +1,4 @@
-// Rocket League-style scoreboard: per-player goals, assists, saves, shots and
+// Rocket Ball-style scoreboard: per-player goals, assists, saves, shots and
 // points in a dark glass panel with team rails, WINS/MVP side columns, mode
 // line and an OVERTIME treatment. Manual only — hold TAB.
 export function createScoreboard(root) {
@@ -93,7 +93,7 @@ export function createScoreboard(root) {
       blueScore.textContent = String(blue.score ?? 0);
       orangeScore.textContent = String(orange.score ?? 0);
       clock.textContent = clockText;
-      // Overtime state: gold clock + phase label swap (Rocket League style).
+      // Overtime state: gold clock + phase label swap (Rocket Ball style).
       clockwrap.classList.toggle('is-overtime', !!overtime);
       phaseLabel.textContent = overtime ? 'OVERTIME' : 'MATCH';
       modeLabel.textContent = mode || 'CASUAL';

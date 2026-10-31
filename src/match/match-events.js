@@ -1,10 +1,10 @@
 // Match events and scoring for the announcer/stats system ("GOAL!", "What a
-// save!", "Shot on goal!", "Demolition!", Rocket League-style points). Consumed
+// save!", "Shot on goal!", "Demolition!", Rocket Ball-style points). Consumed
 // by every authority: offline bots, free play and the P2P host (which
 // broadcasts events to guests).
 //
 // Physics coordinates: X/Y horizontal, Z up, so the goal axis is Y. Rocket
-// League goal geometry in uu: goal line |Y| = 5120, mouth half width 893,
+// Rocket Ball goal geometry in uu: goal line |Y| = 5120, mouth half width 893,
 // crossbar 643, ball radius 92.75, ball gravity 650 uu/s².
 import { STATE_LAYOUT, CAR_STATE, CAR_STATE_STRIDE } from '../physics/state-layout.js';
 
@@ -185,7 +185,7 @@ export class MatchEvents {
     return null;
   }
   // The demolisher is the closest other car, preferring supersonic ones (a
-  // demolition requires a supersonic nose in Rocket League).
+  // demolition requires a supersonic nose in Rocket Ball).
   findDemolisher(state, victim, carCount) {
     const vx = state[STATE_LAYOUT.CARS + victim * CAR_STATE_STRIDE + CAR_STATE.POS];
     const vy = state[STATE_LAYOUT.CARS + victim * CAR_STATE_STRIDE + CAR_STATE.POS + 1];

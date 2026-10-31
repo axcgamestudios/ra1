@@ -5,8 +5,8 @@ export function mountPhysicsLab(root, { selection, getConfiguration, getTraining
   const panel = document.createElement("div");
   panel.className = "physics-lab";
   panel.innerHTML = `<h2>Physics</h2>
-    <p>Rocket League-style physics is the default, covering driving, boost, jumping, dodges, aerial control, ball contacts, pads and demolitions. Original remains available below.</p>
-    <form><label>Physics mode<select name="engine"><option value="experimental">Rocket League-style (default)</option><option value="original">Original</option></select></label>
+    <p>Rocket Ball-style physics is the default, covering driving, boost, jumping, dodges, aerial control, ball contacts, pads and demolitions. Original remains available below.</p>
+    <form><label>Physics mode<select name="engine"><option value="experimental">Rocket Ball-style (default)</option><option value="original">Original</option></select></label>
     <label>Player hitbox<select name="family"><option value="auto">Match visual car (Octane / Dominus)</option></select></label>
     <p class="physics-lab__warning">Player only; the bot stays Octane. Other hitboxes reuse the current visual model, which may not align.</p>
     <p data-native-config></p>

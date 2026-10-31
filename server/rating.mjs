@@ -1,4 +1,4 @@
-// Arena Team Elo v1. This is NOT Rocket League's unpublished MMR algorithm.
+// Arena Team Elo v1. This is NOT the original game's unpublished MMR algorithm.
 // Confidence is a provisional K-factor schedule, NOT a Bayesian posterior.
 const tiers = ['Bronze', 'Silver', 'Gold', 'Platinum', 'Diamond', 'Champion', 'Grand Champion'];
 const roman = ['I', 'II', 'III'];

@@ -181,7 +181,7 @@ if (!an.querySelector("#loading")) {
           <span class="load__spin" aria-hidden="true"><i></i></span>
           <img class="load__mark" src="/assets/ui/rocket-arena-mark.webp" width="1254" height="1254" alt="" />
         </div>
-        <h1 class="load__title">ROCKET <span>LEAGUE</span><sup class="load__reg" aria-hidden="true">®</sup></h1>
+        <h1 class="load__title">ROCKET <span>BALL</span></h1>
         <p class="load__press" aria-hidden="true">PRESS ANY BUTTON TO START</p>
         <p class="load__tagline">Drive hard. Fly high. Own the field.</p>
         <div class="load__progress-block">
@@ -202,7 +202,6 @@ if (!an.querySelector("#loading")) {
         </div>
       </div>
       <footer class="load__legal" aria-hidden="true">
-        <p>ROCKET LEAGUE® is the registered trademark of PSYONIX.</p>
         <p>Fan-made tribute · Not affiliated with or endorsed by Psyonix Inc.</p>
       </footer>
     </div>
@@ -221,7 +220,7 @@ const loadingRule = document.querySelector("#loading .load__rule");
 
 const loadingTip = document.querySelector("#loading [data-load-tip]");
 
-// Loading tips, Rocket League style: rotate while the assets stream in.
+// Loading tips, Rocket Ball style: rotate while the assets stream in.
 const LOADING_TIPS = [
   "Boost pads refill 12 units — big pads fill the whole tank.",
   "Hold jump while turning to air roll your car.",
@@ -255,7 +254,7 @@ function stopLoadingTips() {
   clearTimeout(loadingTipTimeout);
 }
 
-// Rocket League title gate: once every asset is loaded the boot screen turns
+// Rocket Ball title gate: once every asset is loaded the boot screen turns
 // into the classic "PRESS ANY BUTTON TO START" screen and holds until the
 // player actually presses something (any key, any mouse/touch input, any pad
 // button). Automation (Playwright smoke runs) and ?autostart skip the gate so
@@ -931,7 +930,7 @@ async function startGame() {
           implementation: n.physicsSelection.engine === "experimental" ? "source-built RocketSim" : "original embedded core",
           sourceRevision: n.physicsSelection.engine === "experimental" ? SOURCE_CORE_REVISION : null,
           coreSha256: n.physicsSelection.engine === "experimental" ? SOURCE_CORE_SHA256 : ORIGINAL_GAMEPLAY_CORE_SHA256,
-          parity: "No live Rocket League parity claim" }),
+          parity: "No live original-game parity claim" }),
         context: () => ({ mode: a.state.mode, phase: a.state.phase,
           physicsSelection: n.physicsSelection, playerControls: { ...ke }, botControls: { ...l },
           botPending: h, botTicksRemaining: c, carConfigurations: n.carConfigs }),
@@ -962,9 +961,9 @@ async function startGame() {
   }
   ze = performance.now();
   s.sync(ze);
-  completeLoadingTask("renderer", "Ready", "Entering Rocket League.");
+  completeLoadingTask("renderer", "Ready", "Entering Rocket Ball.");
   await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-  // Rocket League boot flow: hold the "PRESS ANY BUTTON TO START" title screen
+  // Rocket Ball boot flow: hold the "PRESS ANY BUTTON TO START" title screen
   // until real input arrives, then fade out into the main menu.
   stopLoadingTips();
   await waitForStartPress();
@@ -1212,7 +1211,7 @@ async function startGame() {
     const events = matchEvents.update(n.state, goal, phase);
     if (events.length) handleMatchEvents(events, matchEvents.summary(), offlineTeams, offlineRoster());
   };
-  // Full time: Rocket League style victory screen (offline) with rematch and
+  // Full time: Rocket Ball style victory screen (offline) with rematch and
   // home actions; online builds its own result screen inside the P2P dialog.
   const victory = createVictoryScreen(an, {
     onRematch: () => { void pe.options.onStart({ aborted: false }); },
@@ -1239,7 +1238,7 @@ async function startGame() {
       });
     } else refreshScoreboard();
   }
-  // Hold TAB to peek at the scoreboard, Rocket League style.
+  // Hold TAB to peek at the scoreboard, Rocket Ball style.
   window.addEventListener("keydown", event => {
     if (event.code !== "Tab" || event.repeat) return;
     if (online?.visible || home?.visible || Xe.isOpen || de?.isOpen || pe.isOpen || goalPresentation?.active) return;
