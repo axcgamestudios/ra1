@@ -15,7 +15,7 @@ import { HostBots } from './host-bots.js';
 import { Prediction } from './prediction.js';
 import { MatchEvents } from '../match/match-events.js';
 import { victoryContent } from '../ui/victory-screen.js';
-import { controlsArray, decodeSnapshot, validName, NEUTRAL, PROTOCOL, PHYSICS_SHA256 } from './protocol.js';
+import { controlsArray, decodeSnapshot, reorderState, validName, NEUTRAL, PROTOCOL, PHYSICS_SHA256 } from './protocol.js';
 import { initAxAccount, onAxAuth, axcName, axcReady, axcOpenAuth, axcModalOpen } from './axc-account.js';
 import { NETWORK_CORE_SHA256 } from '../physics/network-core.js';
 import { Ks } from '../input/controller-selection.js';
@@ -511,6 +511,11 @@ export function mountP2P(root, hooks) {
       controls();
     } else if (message.type === 'input' && room) {
       room.input(entry.slot, message.seq, message.epoch, message.controls);
+    } else if (message.type === 'goal_done') {
+      // A guest skipped the goal replay: end the goal phase for everyone
+      // (the host cuts its own presentation, releasing the hold so the
+      // kickoff fires). Only meaningful while the goal phase is live.
+      if (room?.active && !room.terminal && hooks.match.state.phase === 'goal') hooks.onGoalSkipped?.();
     } else if (message.type === 'ping') {
       sendPayload(entry.conn, { type: 'pong', nonce: message.nonce });
     } else if (message.type === 'pong') {
@@ -671,7 +676,11 @@ export function mountP2P(root, hooks) {
         resolve(allGuestsPrepared() || guests.size === 0);
       };
       readyWaiter = done;
-      readyTimer = setTimeout(done, READY_TIMEOUT);
+      // A guest that loaded faster than the host's own arena build already sent
+      // 'prepared' while readyWaiter was still null — check the state now or
+      // the match would stall until the 150 s timeout.
+      if (allGuestsPrepared() || guests.size === 0) done();
+      else readyTimer = setTimeout(done, READY_TIMEOUT);
     });
   }
 
@@ -727,6 +736,9 @@ export function mountP2P(root, hooks) {
         snapshotHz: SNAPSHOT_HZ_BY_MODE[mode] ?? 60,
         bots: hostBots,
         events: matchEvents,
+        // The goal phase holds while the host's celebration/replay runs, so
+        // kickoff waits for the presentation (and for guests' replay skips).
+        goalHold: () => !!hooks.goalPresentationHold?.(),
         onEvent: event => {
           if (event.type === 'kickoff') hooks.kickoff?.();
           else if (event.type === 'events') {
@@ -911,10 +923,21 @@ export function mountP2P(root, hooks) {
       if (snapshotArrivals.length > 240) snapshotArrivals.splice(0, snapshotArrivals.length - 240);
       prediction?.receive(snapshot, selfSlot);
       if (!active) return;
+      const previousPhase = hooks.match.state.phase;
       Object.assign(hooks.match.state, snapshot.match);
       root.dataset.onlineTick = snapshot.tick;
       root.dataset.onlinePhase = snapshot.match.phase;
       updateHudFromMatch(snapshot.match);
+      // First snapshot of the goal phase: hand the presentation the exact
+      // authoritative goal-moment state (the guest's recorded buffer lags the
+      // interpolation delay, so its clip would otherwise end before the ball
+      // visibly crosses the line).
+      if (previousPhase === 'playing' && snapshot.match.phase === 'goal')
+        hooks.onGoalState?.(reorderState(snapshot.state, order));
+      // The match moved on (kickoff after everyone's replay, full time): cut
+      // a still-running local presentation instead of replaying over it.
+      if (previousPhase === 'goal' && snapshot.match.phase !== 'goal')
+        hooks.cutGoalPresentation?.();
     } catch (error) {
       // One bad snapshot must never kill the whole data-channel stream.
       if (snapshotWarnings++ < 5) console.warn('p2p snapshot processing failed', error);
@@ -1150,6 +1173,12 @@ export function mountP2P(root, hooks) {
   return {
     open, leave, escape,
     restoreIntent() { /* Peer matches do not survive reloads; nothing to restore. */ },
+    // Guest-side replay skip notification: the host ends the goal phase for
+    // everyone ("replay skipped"), instead of leaving this player staring at
+    // a frozen arena until the host's own replay finishes.
+    skipGoalReplay() {
+      if (role === 'guest' && conn?.open && active) sendPayload(conn, { type: 'goal_done' });
+    },
     get active() { return active; },
     get visible() { return !panel.hidden; },
     get role() { return role; },
@@ -1222,7 +1251,7 @@ export function mountP2P(root, hooks) {
               if ((conn?.dataChannel?.bufferedAmount ?? 0) < INPUT_DUP_BYTES) sendPayload(conn, message);
             }, 8);
           },
-          clock, usable, { render });
+          clock, usable, { render, hold: !!hooks.goalPresentationHold?.() });
         hooks.match.state.paused = false;
         if (render && latestSnapshot) {
           // Per-slot controls of every remote car, in local render order.

@@ -34,14 +34,17 @@ export class GoalPresentation {
     this.countdown = this.element.querySelector(".goal-presentation__countdown");
     this.progress = this.element.querySelector(".goal-presentation__progress");
     this.skipButton = this.element.querySelector(".goal-presentation__skip");
-    this.skip = () => this.finish();
+    // User-initiated skips (button/keys/pad) carry { skip: true } so hosts can
+    // cut the goal phase early and guests can report it; the natural replay
+    // end and the cancel/dispose paths stay unflagged.
+    this.skip = () => this.finish({ skip: true });
     this.keydown = (event) => {
       if (event.code === "Space" && !this.replaying) return;
       if (!this.active || event.repeat || !["Escape", "Space"].includes(event.code)) return;
       if (event.target?.closest?.("input, textarea, select, [contenteditable='true']")) return;
       event.preventDefault();
       event.stopImmediatePropagation();
-      this.finish();
+      this.finish({ skip: true });
     };
     this.skipButton.addEventListener("click", this.skip);
   }
@@ -142,7 +145,7 @@ export class GoalPresentation {
     return true;
   }
 
-  finish({ cancel = false } = {}) {
+  finish({ cancel = false, skip = false } = {}) {
     if (!this.active) return;
     this._active = false;
     this.window.removeEventListener("keydown", this.keydown, true);
@@ -163,7 +166,7 @@ export class GoalPresentation {
     this.root.classList.remove("goal-presentation-active", "goal-presentation-replaying");
     this.clip = null;
     this.state = null;
-    this.onFinish({ cancel, scorerIndex: this.scorerIndex });
+    this.onFinish({ cancel, skip, scorerIndex: this.scorerIndex });
   }
 
   dispose() {

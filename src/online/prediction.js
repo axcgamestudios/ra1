@@ -207,13 +207,19 @@ export class Prediction {
             this.rate += (target - this.rate) * .15;
         }
     }
-    update(now, controls, send, clock, connected, { render = true } = {}) {
+    update(now, controls, send, clock, connected, { render = true, hold = false } = {}) {
         if (!this.latest || !Number.isFinite(now))
             return;
         const elapsed = this.last === null ? 0 : Math.max(0, now - this.last);
         this.last = now;
         const updateStarted = performance.now();
-        this.reconcile();
+        // While a goal presentation owns the local simulation (celebration
+        // physics), reconciling would clobber it with the frozen authoritative
+        // goal state on every snapshot. The hold skips reconcile only; the
+        // timeline keeps buffering and the first post-presentation reconcile
+        // restores from the freshest snapshot (kickoff resets included).
+        if (!hold)
+            this.reconcile();
         // Keep driving the local car through brief transport hiccups (packet
         // retransmissions and congestion-valve pauses): 1400 ms of prediction
         // beats a frozen car. Beyond that the timeline is too stale to trust

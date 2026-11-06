@@ -444,8 +444,13 @@ async function startGame() {
   let motionEffects = null;
   const speedLines = new SpeedLines();
   let online = null, home = null, pauseMenu = null, goalPresentation = null, pendingGoal = null, replayBuffer = null, arenaEffects = null;
+  // Authoritative goal-moment state handed over by the P2P layer (guest side):
+  // the last replay frame is recorded from it so the replay shows the ball
+  // actually crossing the line despite the interpolation delay.
+  let pendingGoalState = null;
   let replayClock = 0, lastReplayRecord = -1, previewDirty = true;
   let previewRestore = null, returnHomeAfter = null, returnPauseAfter = false, goalSkipDown = false;
+  let wtTicks = 0;
   let ne = !1,
     le = !1,
     je = !1,
@@ -542,7 +547,7 @@ async function startGame() {
       if (online?.visible) { online.escape(); return; }
       if (home?.visible) return;
       if (pauseMenu?.isOpen) { pauseMenu.hide(); st(); return; }
-      if (goalPresentation?.active) { goalPresentation.finish(); return; }
+      if (goalPresentation?.active) { goalPresentation.finish({ skip: true }); return; }
       if (Se != null && Se.isDetailsOpen) {
         Se.hideDetails();
         return;
@@ -590,7 +595,7 @@ async function startGame() {
     (de = new Garage(an, (W) => qe("car", W))));
   const _e = () => {
     replayBuffer?.clear(); replayClock = 0; lastReplayRecord = -1;
-    pendingGoal = null; arenaEffects?.clear(); motionEffects?.clear();
+    pendingGoal = null; pendingGoalState = null; arenaEffects?.clear(); motionEffects?.clear();
     (n.resetKickoff(), w(), v());
     const W = n.state,
       fe = STATE_LAYOUT.CARS + r * CAR_STATE_STRIDE;
@@ -970,6 +975,7 @@ async function startGame() {
   nd.dataset.state = "done";
   setTimeout(() => nd.remove(), 520);
   function wt(W) {
+    wtTicks++;
     if (home?.visible && !online?.active) {
       ze = W; s.sync(W);
       if (home.consumeDirty() || previewDirty) { renderHomePreview(); previewDirty = false; return; }
@@ -986,7 +992,7 @@ async function startGame() {
       if (document.hidden || !document.hasFocus() || [...J].some(key => key !== "goal")) return;
       He.frameStart();
       const skipPad = Ks(), skipPressed = !!(skipPad?.buttons[0]?.pressed || skipPad?.buttons[1]?.pressed || skipPad?.buttons[2]?.pressed);
-      if (goalPresentation.replaying && skipPressed && !goalSkipDown) goalPresentation.finish();
+      if (goalPresentation.replaying && skipPressed && !goalSkipDown) goalPresentation.finish({ skip: true });
       goalSkipDown = skipPressed;
       goalPresentation.update(delta); arenaEffects.update(delta);
       quality.shadows && (te.shadowMap.needsUpdate = true);
@@ -1083,14 +1089,24 @@ async function startGame() {
     } else syncPadHistory();
     arenaEffects.update(fe);
     if (pendingGoal) {
-      const goal = pendingGoal; pendingGoal = null; motionEffects.clear();
-      const scorerIndex = goal.mode === "freeplay" || goal.team === t.playerTeam ? r : no;
-      goalPresentation.begin({ time: replayClock, state: s.currState,
-        scorerIndex, team: goal.team, mode: goal.mode,
-        scorerName: scorerIndex === r ? "YOU" : JA(o.id).name });
-      quality.shadows && (te.shadowMap.needsUpdate = true);
-      renderGame(N.scene,H.camera); He.frameEnd(s.lastTicks,s.lastDropped,s.lastStalled);
-      return;
+      // Online only: the goal event rides the same wire as the phase-change
+      // snapshot but they are separate messages — wait briefly for the
+      // authoritative goal state so the replay's final frame shows the ball
+      // crossing the line. Recording continues while waiting.
+      const waitingForGoalState = pendingGoal.mode === "online" && !pendingGoalState && performance.now() - pendingGoal.at < 400;
+      if (!waitingForGoalState) {
+        const goal = pendingGoal; pendingGoal = null; motionEffects.clear();
+        if (goal.mode === "online" && pendingGoalState) {
+          recordGoalFrame(pendingGoalState); pendingGoalState = null;
+        }
+        const scorerIndex = resolveOnlineScorer(goal);
+        goalPresentation.begin({ time: replayClock, state: s.currState,
+          scorerIndex, team: goal.team, mode: goal.mode,
+          scorerName: scorerIndex === r ? "YOU" : online?.localRoster()?.[scorerIndex]?.name ?? "PLAYER" });
+        quality.shadows && (te.shadowMap.needsUpdate = true);
+        renderGame(N.scene,H.camera); He.frameEnd(s.lastTicks,s.lastDropped,s.lastStalled);
+        return;
+      }
     }
     for (let bn = 0; bn < E.length; bn++) {
       const B = STATE_LAYOUT.CARS + bn * CAR_STATE_STRIDE,
@@ -1187,9 +1203,22 @@ async function startGame() {
     for (const event of events ?? []) {
       if (event.kind === "goal") {
         announcer.say("goal", { team: event.team });
-        // Online has no goal presentation; fire the (bigger) local explosion
-        // with the garage-customized style and colors.
-        if (online?.active) arenaEffects.goal(N.ball.position.clone(), goalExplosionSpec(event.team));
+        // Online now runs the SAME goal presentation as offline (celebration
+        // + replay); the presentation fires the explosion itself, so the old
+        // direct no-presentation blast is gone. The goal event carries the
+        // scorer's slot (already in local render order for guests). A pending
+        // fallback from the phase snapshot (scorerIndex null) is upgraded with
+        // the real slot when the event arrives a beat later.
+        if (online?.active && a.state.mode === "match" && !goalPresentation?.active
+            && (a.state.phase === "playing" || a.state.phase === "goal")
+            && (!pendingGoal || pendingGoal.scorerIndex == null)) {
+          pendingGoal = {
+            team: event.team === 1 ? 1 : 0,
+            mode: "online",
+            scorerIndex: Number.isInteger(event.slot) && event.slot >= 0 ? event.slot : null,
+            at: performance.now(),
+          };
+        }
       } else if (event.kind === "nice_shot") {
         setTimeout(() => announcer.say("nice-shot", { team: event.team }), 550);
       } else if (event.kind === "shot") {
@@ -1220,8 +1249,16 @@ async function startGame() {
   // Full time: victory/defeat call plus the final scoreboard.
   function watchMatchPhase() {
     if (a.state.phase === lastMatchPhase) return;
-    const ended = a.state.phase === "ended" && lastMatchPhase !== "ended";
+    const previous = lastMatchPhase;
+    const ended = a.state.phase === "ended" && previous !== "ended";
     lastMatchPhase = a.state.phase;
+    // Online guests have no local kickoff reset (the host owns the arena):
+    // reset the replay recording timeline when the kickoff phase arrives so
+    // the next goal's clip starts from a clean buffer, like the host's _e().
+    if (online?.active && a.state.phase === "kickoff" && previous === "goal") {
+      replayBuffer?.clear(); replayClock = 0; lastReplayRecord = -1;
+      pendingGoal = null; pendingGoalState = null;
+    }
     if (!ended || a.state.mode !== "match") return;
     // Finished matches feed the local player level and the scoreboard WINS
     // rails shown on the home card and the TAB board.
@@ -1263,9 +1300,20 @@ async function startGame() {
   const parkedState = s.currState.slice();
   const replayState = new Float32Array(s.currState.length);
   const replayBasis = new F(), replayMatrix = new mt();
-  const replayCameras = [0, 1].map(() => ({ position: [0,0,0], quaternion: [0,0,0,1], fov: 110 }));
+  // One replay viewpoint per car: the local player's real camera plus a
+  // synthesized chase camera for every other car, so an online scorer's
+  // replay always has a valid viewpoint regardless of roster size (2-6 cars).
+  let replayCameras = [0, 1].map(() => ({ position: [0,0,0], quaternion: [0,0,0,1], fov: 110 }));
+  const ensureReplayCameras = count => {
+    if (replayCameras.length === count) return;
+    replayCameras = Array.from({ length: count }, () => ({ position: [0,0,0], quaternion: [0,0,0,1], fov: 110 }));
+  };
   const botReplayCamera = new fn(110, H.camera.aspect, 4, 40000);
   const botForward = new F(), botTarget = new F();
+  const storeReplayCamera = (camera, slot, fov) => {
+    camera.position.toArray(slot.position); camera.quaternion.toArray(slot.quaternion);
+    slot.fov = fov;
+  };
   const padHistory = new Uint8Array(Le.length);
   function syncPadHistory() { for (let index=0;index<Le.length;index++) padHistory[index] = s.currState[ro+index*2] === 1 ? 1 : 0; }
   syncPadHistory();
@@ -1292,16 +1340,60 @@ async function startGame() {
       }
     };
     storePose(N.ball,STATE_LAYOUT.BALL);
-    for(let index=0;index<s.currState[STATE_LAYOUT.NUM_CARS];index++)storePose(N.cars[index],STATE_LAYOUT.CARS+index*CAR_STATE_STRIDE);
-    H.camera.position.toArray(replayCameras[r].position);H.camera.quaternion.toArray(replayCameras[r].quaternion);replayCameras[r].fov=H.camera.fov;
-    if(N.cars[no]?.visible){
-      const bot=N.cars[no]; botForward.set(1,0,0).applyQuaternion(bot.quaternion);
-      botReplayCamera.position.copy(bot.position).addScaledVector(botForward,-H.settings.distance);
+    const carCount = Math.min(N.cars.length, s.currState[STATE_LAYOUT.NUM_CARS] | 0);
+    for(let index=0;index<carCount;index++)storePose(N.cars[index],STATE_LAYOUT.CARS+index*CAR_STATE_STRIDE);
+    // Keep two camera slots offline (player + rival viewpoint) but never
+    // touch a car the roster does not have — freeplay fields a single car.
+    ensureReplayCameras(Math.max(2, carCount));
+    storeReplayCamera(H.camera, replayCameras[r], H.camera.fov);
+    for (let index = 0; index < carCount; index++) {
+      if (index === r) continue;
+      // Chase viewpoint for every other car — visible or not (a demolished car
+      // keeps its last pose) — so any scorer's replay has a camera.
+      const car = N.cars[index];
+      botForward.set(1,0,0).applyQuaternion(car.quaternion);
+      botReplayCamera.position.copy(car.position).addScaledVector(botForward,-H.settings.distance);
       botReplayCamera.position.y+=H.settings.height;
-      botTarget.copy(N.ball.position);botReplayCamera.lookAt(botTarget);
-      botReplayCamera.position.toArray(replayCameras[no].position);botReplayCamera.quaternion.toArray(replayCameras[no].quaternion);replayCameras[no].fov=H.settings.fov;
+      botTarget.copy(N.ball.position);
+      botReplayCamera.lookAt(botTarget);
+      storeReplayCamera(botReplayCamera, replayCameras[index], H.settings.fov);
     }
     replayBuffer.record(replayClock,replayState,replayCameras);
+  }
+  // Records the authoritative goal-moment snapshot (guest side) as the
+  // replay's final frame: poses come straight from the host's state, the
+  // player camera is the live one and the rest get synthesized chase
+  // cameras — the exact shape captureReplayFrame stores, so the clip replays
+  // it without special cases. Recording at the current replayClock replaces
+  // the delayed frame captured this same frame (same timestamp).
+  function recordGoalFrame(state) {
+    replayState.set(state);
+    const carCount = Math.min(N.cars.length, state[STATE_LAYOUT.NUM_CARS] | 0);
+    ensureReplayCameras(Math.max(2, carCount));
+    storeReplayCamera(H.camera, replayCameras[r], H.camera.fov);
+    for (let index = 0; index < carCount; index++) {
+      if (index === r) continue;
+      const at = STATE_LAYOUT.CARS + index * CAR_STATE_STRIDE;
+      // Physics coordinates: X/Y horizontal, Z up; three.js maps them (x, z, y).
+      botReplayCamera.position.set(
+        state[at] - state[at + CAR_STATE.FWD] * H.settings.distance,
+        state[at + 2] + H.settings.height,
+        state[at + 1] - state[at + CAR_STATE.FWD + 1] * H.settings.distance);
+      botTarget.set(state[STATE_LAYOUT.BALL], state[STATE_LAYOUT.BALL + 2], state[STATE_LAYOUT.BALL + 1]);
+      botReplayCamera.lookAt(botTarget);
+      storeReplayCamera(botReplayCamera, replayCameras[index], H.settings.fov);
+    }
+    replayBuffer.record(replayClock,replayState,replayCameras);
+  }
+  // Replay viewpoint car for a pending goal: online uses the scorer's slot
+  // (already in local render order — guests reorder on receipt) or falls back
+  // to the first car of the scoring team; offline keeps the you/bot pair.
+  function resolveOnlineScorer(goal) {
+    if (goal.mode !== "online") return goal.mode === "freeplay" || goal.team === t.playerTeam ? r : no;
+    if (Number.isInteger(goal.scorerIndex) && goal.scorerIndex >= 0 && goal.scorerIndex < N.cars.length) return goal.scorerIndex;
+    const teams = online?.teams?.() ?? [];
+    const teammate = teams.findIndex(team => team === goal.team);
+    return teammate >= 0 ? teammate : 0;
   }
   function renderHomePreview() {
     const orbit=home.orbit, car=N.cars[r];
@@ -1357,14 +1449,21 @@ async function startGame() {
       w();C.silence();const pad=Ks();goalSkipDown=!!(pad?.buttons[0]?.pressed||pad?.buttons[1]?.pressed);
       ne=false;qe("goal",true);
     },
-    onFinish:({cancel})=>{
+    onFinish:({cancel, skip})=>{
       motionEffects.clear();ne=false;qe("goal",false);
       document.activeElement instanceof HTMLElement && document.activeElement.blur();
       if(!cancel){
-        if(a.state.mode==="match"){
+        if(online?.active){
+          // ONLINE: the authority owns the transition. The host's room holds
+          // the goal phase on this presentation, so ending it releases the
+          // hold and the next room tick fires the kickoff; guests follow the
+          // host's phase snapshots. A guest's skip also tells the host to end
+          // the goal phase for everyone ("replay skipped").
+          if(skip && online.role === "guest") online.skipGoalReplay?.();
+        } else if(a.state.mode==="match"){
           a.state.paused=false;a.phaseTicks=1;
           if(a.tick()==="kickoff")_e();
-        }else _e();
+        } else _e();
       }
       n.resetView();s.sync();N.update(s.prevState,s.currState,0,0,0,A,A,false);
       H.update(N.cars[r],N.ball,0,be);syncPadHistory();pe.update(a.state);ge();
@@ -1448,6 +1547,31 @@ async function startGame() {
     onEvents: (events, stats, teams) => handleMatchEvents(events, stats, teams, online?.localRoster()),
     onStats: () => { if (tabHeld) refreshScoreboard(); },
     onMatchEnd: result => recordFinishedMatch({ winnerTeam: result?.winner ?? null }),
+    // Goal presentation coordination: the host's room freezes the goal-phase
+    // countdown while this side's celebration/replay runs (guests' skips and
+    // natural ends release it), and the guest's prediction stops reconciling
+    // for the same window so the celebration owns the local sim.
+    goalPresentationHold: () => !!goalPresentation?.active || !!pendingGoal,
+    // First snapshot of the goal phase (guest): the authoritative goal-moment
+    // state becomes the replay's final frame; if the goal event packet was
+    // dropped, the phase change alone still triggers the presentation.
+    onGoalState: state => {
+      pendingGoalState = state;
+      if (!pendingGoal && !goalPresentation?.active && a.state.mode === "match")
+        pendingGoal = { team: a.state.scorer === 1 ? 1 : 0, mode: "online", scorerIndex: null, at: performance.now() };
+    },
+    // A guest skipped the replay: end the goal phase for everyone by cutting
+    // this side's presentation (the hold release fires the kickoff).
+    onGoalSkipped: () => {
+      pendingGoal = null; pendingGoalState = null;
+      if (goalPresentation?.active) goalPresentation.finish({ skip: true });
+    },
+    // The match moved on over the wire (kickoff after the replays, full time):
+    // stop replaying over it instead of discovering it frames later.
+    cutGoalPresentation: () => {
+      pendingGoal = null; pendingGoalState = null;
+      if (goalPresentation?.active) goalPresentation.finish();
+    },
     prepare: async (roster, order, valid, descriptor) => {
       victory.hide();
       goalPresentation?.finish({ cancel: true }); v(); p = false;
@@ -1469,6 +1593,36 @@ async function startGame() {
     // Presentation debug hooks: announcer, scoreboard, stadiums, goal effects.
     Object.defineProperty(window, "rocketArenaPresentation", { value: Object.freeze({
       say: kind => announcer.say(kind),
+      // Input-context keys held right now (debugging presentation pauses).
+      contextKeys: () => [...J],
+      docFocus: () => ({ focus: document.hasFocus(), hidden: document.hidden }),
+      frameCount: () => wtTicks,
+      replayDebug: () => ({ ne, replayClock, lastReplayRecord, frames: replayBuffer?.count ?? null,
+        mode: a.state.mode, phase: a.state.phase, keys: [...J] }),
+      goalState: () => ({ active: !!goalPresentation?.active, elapsed: goalPresentation?.elapsed ?? null,
+        replaying: !!goalPresentation?.replaying, clipDuration: goalPresentation?.clip?.duration ?? null,
+        clipFrames: goalPresentation?.clip?.frames?.length ?? null, pending: !!pendingGoal,
+        pendingState: !!pendingGoalState }),
+      // Debug goal: places the ball on a collision course with a goal so the
+      // REAL goal pipeline (pollGoal -> phase -> events -> broadcast) fires
+      // end to end — the presentation then triggers on every peer. Only
+      // meaningful on the host's authoritative sim (setBallState is the same
+      // API prediction uses for restores; the exposed state view is
+      // output-only, so direct writes do not reach the simulation).
+      forceGoal: (team = 0) => {
+        const module = n.module;
+        const scratch = module._malloc(18 * 4);
+        try {
+          const f = module.HEAPF32, base = scratch >> 2, sign = team === 1 ? -1 : 1;
+          f[base + 0] = 0; f[base + 1] = sign * (5120 - 400); f[base + 2] = 200;
+          f[base + 3] = 1; f[base + 4] = 0; f[base + 5] = 0;
+          f[base + 6] = 0; f[base + 7] = 1; f[base + 8] = 0;
+          f[base + 9] = 0; f[base + 10] = 0; f[base + 11] = 1;
+          f[base + 12] = 0; f[base + 13] = sign * 4000; f[base + 14] = 0;
+          f[base + 15] = 0; f[base + 16] = 0; f[base + 17] = 0;
+          return module._physics_setBallState(scratch) === 1;
+        } finally { module._free(scratch); }
+      },
       testGoal: (team = 0) => {
         matchEvents.slots[0].goals++;
         matchEvents.slots[0].points += 100;

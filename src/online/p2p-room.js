@@ -18,6 +18,11 @@ import { STATE_LAYOUT } from '../physics/state-layout.js';
 
 const COMMAND_TICKS = SIM_HZ / INPUT_HZ;
 const STALL_MS = 10000;
+// Goal-phase hold: while any local goal presentation (celebration + replay)
+// is running, the match countdown freezes — the offline match does the same
+// by simply not ticking. Capped so a wedged presentation can never block the
+// match forever; 2400 ticks = 20 s at 120 Hz.
+const GOAL_HOLD_MAX_TICKS = 2400;
 // Adaptive cadence health thresholds (SCTP bufferedAmount per data channel):
 // sustained pressure above 12 KB means the link cannot carry the current
 // snapshot rate, so the host halves the rate before delay compounds; below
@@ -106,12 +111,15 @@ export class InputStream {
 // team matches pass guests: Map(slot -> { send(payload), congested? }) so each
 // data channel gets its own congestion valve.
 export class HostRoom {
-    constructor({ sim, match, players, send, guests, onEvent, congested, events, snapshotHz = SNAPSHOT_HZ, bots = null }) {
+    constructor({ sim, match, players, send, guests, onEvent, congested, events, snapshotHz = SNAPSHOT_HZ, bots = null, goalHold = null }) {
         this.sim = sim;
         this.match = match;
         this.players = players;
         this.onEvent = onEvent;
         this.events = events ?? null; // optional MatchEvents authority (stats/announcer)
+        // True while the host's goal presentation (or a pending one) should
+        // hold the goal phase; kickoff fires the moment it releases.
+        this.goalHold = goalHold ?? (() => false);
         // Optional backpressure probe (SCTP bufferedAmount): when a link cannot
         // carry the full snapshot stream, disposable snapshots are skipped so
         // latency stops compounding; the next snapshot carries the full state.
@@ -149,6 +157,7 @@ export class HostRoom {
         this.terminal = false;
         this.tick = 0;
         this.epoch = 0;
+        this.goalHeldTicks = 0;
         this.acks = this.slots.map(() => 0);
         this.result = null;
         this.localControls = [...NEUTRAL];
@@ -243,20 +252,39 @@ export class HostRoom {
             const native = this.sim.state;
             if (!native.every(Number.isFinite)) { this.finish(null, 'invalid_simulation'); return true; }
             const goal = this.sim.pollGoal();
+            // MatchEvents must observe the PRE-goal phase: match.tick() below
+            // flips it to 'goal' on the scoring tick, and the goal event (and
+            // every other 'playing'-gated call) would never fire. Offline does
+            // the same — handleOfflineEvents runs before a.tick().
+            const announced = this.events ? this.events.update(native, goal, state.phase) : [];
             const event = this.match.tick({
                 goal,
                 ballOnGround: this.sim.ballOnGround,
                 kickoffTouched: Math.abs(native[STATE_LAYOUT.BALL]) + Math.abs(native[STATE_LAYOUT.BALL + 1]) > 1
                     || Math.hypot(native[STATE_LAYOUT.BALL + 12], native[STATE_LAYOUT.BALL + 13]) > 1
             });
-            if (this.events) {
-                const announced = this.events.update(native, goal, state.phase);
-                if (announced.length) this.onEvent?.({ type: 'events', events: announced, stats: this.events.summary() });
-            }
+            if (announced.length) this.onEvent?.({ type: 'events', events: announced, stats: this.events.summary() });
             if (event === 'kickoff') this.afterGoal();
         } else {
-            const event = this.match.tick();
-            if (event === 'kickoff') this.afterGoal();
+            // Goal phase: freeze the countdown while a presentation is running
+            // (same semantics as the offline match, which never ticks during
+            // the replay). On release — or when the safety valve trips — the
+            // leftover countdown is cut so kickoff fires immediately; a guest's
+            // replay skip releases the hold through the same path.
+            let goalHoldActive = false;
+            if (state.phase === 'goal') {
+                if (this.goalHold() && this.goalHeldTicks < GOAL_HOLD_MAX_TICKS) {
+                    this.goalHeldTicks++;
+                    goalHoldActive = true;
+                } else {
+                    if (this.goalHeldTicks > 0) this.match.state.phaseTicks = 1;
+                    this.goalHeldTicks = 0;
+                }
+            } else if (this.goalHeldTicks > 0) this.goalHeldTicks = 0;
+            if (!goalHoldActive) {
+                const event = this.match.tick();
+                if (event === 'kickoff') this.afterGoal();
+            }
         }
         if (state.phase === 'ended') this.finish(state.winner, 'full_time');
         // Coalesced emission: mark the newest state due and let the host frame
