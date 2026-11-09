@@ -1590,6 +1590,12 @@ async function startGame() {
   });
   if (new URLSearchParams(location.search).get("physicsDebug") === "1") {
     Object.defineProperty(window, "rocketArenaOnline", { value: Object.freeze({ snapshot: () => online.diagnostics() }) });
+    // P2P handshake hooks: drop the signaling socket (room re-registration)
+    // and read live peer state. Test-only.
+    Object.defineProperty(window, "rocketArenaP2P", { value: Object.freeze({
+      dropSignaling: () => online.debugDropSignaling(),
+      peerState: () => online.debugPeerState(),
+    }) });
     // Presentation debug hooks: announcer, scoreboard, stadiums, goal effects.
     Object.defineProperty(window, "rocketArenaPresentation", { value: Object.freeze({
       say: kind => announcer.say(kind),

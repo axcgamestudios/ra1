@@ -127,10 +127,14 @@ try {
     (await phase(host)) === 'goal' && (await phase(guest)) === 'goal',
     `host=${await phase(host)} guest=${await phase(guest)}`);
 
-  // Replay phase (2 s celebration, then the clip) on both peers.
+  // Replay phase (2 s celebration, then the clip) on both peers. The guest
+  // must be sampled IMMEDIATELY after its own wait: waiting for the host's
+  // replay start (SwiftShader renders it much slower) lets the guest's clip
+  // finish naturally in between, which is not a game failure.
   await until(async () => (await goalState(guest)).replaying, 60000, 'guest replay starts');
+  const guestRep = await presentation(guest);
   await until(async () => (await goalState(host)).replaying, 90000, 'host replay starts');
-  const hostRep = await presentation(host), guestRep = await presentation(guest);
+  const hostRep = await presentation(host);
   check('goal 1: replay running on guest', guestRep.active && guestRep.replay, JSON.stringify(guestRep));
   check('goal 1: replay running on host', hostRep.active && hostRep.replay, JSON.stringify(hostRep));
   await host.screenshot({ path: `${out}/03-host-replay.png` });

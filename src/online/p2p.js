@@ -27,6 +27,19 @@ const CODE_LENGTH = 5;
 const CONNECT_TIMEOUT = 15000;
 const READY_TIMEOUT = 150000;
 const PING_INTERVAL = 2000;
+// Handshake robustness: relayed (TURN) links can legitimately take tens of
+// seconds to negotiate and the shared signaling cloud occasionally hiccups,
+// so a single attempt that never opens must not end the join. The guest
+// retries the whole round on a FRESH peer (fresh ICE gathering — the standard
+// remedy for a stalled candidate path); the host drops pre-hello zombies and
+// re-registers its room ID after a signaling drop so joins keep working.
+const JOIN_ATTEMPTS = 3;
+const JOIN_RETRY_BACKOFF_MS = 900;
+const HELLO_TIMEOUT = 20000; // host: drop connections that never say hello
+const LOBBY_WAIT_MS = 10000; // guest: lobby answer watchdog period
+const LOBBY_HELLO_RETRIES = 2; // guest: hello re-introductions before giving up
+const SIGNALING_RECONNECT_ROUNDS = 6;
+const SIGNALING_RECONNECT_MS = 4000;
 const NAME_KEY = 'arena.p2p.name';
 // Mode-aware snapshot cadence (Hz). A 6-car relayed link cannot carry 60 Hz
 // snapshots; guests interpolate anyway, so lower cadence trades nothing the
@@ -153,6 +166,9 @@ export function mountP2P(root, hooks) {
   let pingTimer = 0, readyTimer = 0, statsTimer = 0, poll = 0, lastNetworkDisplay = 0;
   let oldButtons = [], lastDirection = 0, roster = null, matchEvents = null, matchStats = null;
   let lobbyReadySent = false;
+  // Guest lobby handshake: the host answered with lobby/welcome (watchdog off).
+  let guestGreeted = false;
+  let lobbyWatchdog = 0;
   // Host-side bot fill: one shared ONNX worker drives every bot the host adds.
   let hostBots = null, botLoadTimer = 0;
   let selectedBotId = 'nexto';
@@ -382,6 +398,7 @@ export function mountP2P(root, hooks) {
   function teardownSignaling() {
     clearInterval(pingTimer); pingTimer = 0;
     clearTimeout(readyTimer); readyTimer = 0;
+    clearTimeout(lobbyWatchdog); lobbyWatchdog = 0;
     clearInterval(statsTimer); statsTimer = 0;
     clearInterval(botLoadTimer); botLoadTimer = 0;
     hostBots?.dispose(); hostBots = null;
@@ -414,6 +431,10 @@ export function mountP2P(root, hooks) {
     }, CONNECT_TIMEOUT);
     peer.on('open', () => {
       if (attempt !== generation) return;
+      // 'open' fires again after a successful signaling reconnect (the room
+      // was already live): re-registering must not reset the room's state or
+      // stamp a "Room ready" banner over the current lobby status.
+      if (roomReady) return;
       clearTimeout(createTimeout);
       roomReady = true;
       setStatus(`Room ready for ${mode}. Share the code with your friends — up to ${lobbyCapacity()} can join.`);
@@ -435,27 +456,68 @@ export function mountP2P(root, hooks) {
     });
     peer.on('error', error => {
       if (attempt !== generation) return;
+      if (error?.type === 'unavailable-id') { clearTimeout(createTimeout); leaveToLobby(); createRoom(); return; }
+      if (error?.type === 'network') {
+        // Signaling blip: the 'disconnected' handler re-registers the room.
+        // Killing the room here would strand a solo host for no reason (and
+        // the create timeout still guards a room that never opened at all).
+        return;
+      }
       clearTimeout(createTimeout);
-      if (error?.type === 'unavailable-id') { leaveToLobby(); createRoom(); return; }
       setStatus(explain(error));
       if (!guests.size && !conn) leaveToLobby();
     });
+    peer.on('disconnected', () => {
+      if (attempt !== generation) return;
+      // The signaling socket dropped mid-room (server blip is common on the
+      // shared cloud). Existing P2P channels keep working, but the room ID is
+      // unregistered now — nobody can join until it is re-registered. That is
+      // the classic "stuck on Player connecting / room not found" source.
+      keepSignalingAlive(attempt, 0);
+    });
+  }
+
+  // Re-register the room ID after a signaling drop. PeerJS keeps existing
+  // data channels alive across a reconnect, so the room code stays valid and
+  // the host never even notices. Silent on success (never clobbers the
+  // current lobby/match status); a warning only after the retries run out.
+  function keepSignalingAlive(attempt, round) {
+    if (attempt !== generation || !peer || peer.destroyed || peer.open) return;
+    if (round >= SIGNALING_RECONNECT_ROUNDS) {
+      if (role === 'host' && !room?.active && !starting)
+        setStatus('Lost the signaling server — new players cannot join this room. Create a fresh room and share its code.');
+      return;
+    }
+    try { peer.reconnect(); } catch { return; }
+    setTimeout(() => { if (attempt === generation) keepSignalingAlive(attempt, round + 1); }, SIGNALING_RECONNECT_MS);
   }
 
   function acceptGuest(connection, attempt) {
     const entry = { conn: connection, name: '', visual: 'octane-original', ready: false, saidHello: false, slot: null };
     let closed = false;
+    // ICE on relayed paths can take a while, but a connection that never
+    // says hello is a zombie negotiation: drop it so this status line (and
+    // the room) never hangs on "Player connecting…" forever. The guest's own
+    // join retries mean a persistent player simply knocks again.
+    const helloTimer = setTimeout(() => {
+      if (closed || attempt !== generation || entry.saidHello) return;
+      // Never clobber a live lobby's status — a zombie drop is only news
+      // when the room is still waiting for its first player.
+      if (!guests.size) setStatus('A player could not finish connecting — they can retry joining.');
+      try { connection.close(); } catch {}
+    }, HELLO_TIMEOUT);
     connection.on('data', data => gate(() => {
       if (attempt !== generation) return;
       if (data instanceof ArrayBuffer || ArrayBuffer.isView(data)) return;
       if (data?.type === 'hello' && !entry.saidHello) {
         entry.saidHello = true;
+        clearTimeout(helloTimer);
         void onGuestHello(entry, data, attempt);
         return;
       }
       onHostMessage(entry, data);
     }, data?.type === 'input' || data?.type === 'ping'));
-    connection.on('close', () => { if (!closed) { closed = true; if (attempt === generation) onGuestClose(entry); } });
+    connection.on('close', () => { if (!closed) { closed = true; clearTimeout(helloTimer); if (attempt === generation) onGuestClose(entry); } });
     connection.on('error', () => {});
     setStatus('Player connecting…');
   }
@@ -528,7 +590,20 @@ export function mountP2P(root, hooks) {
   }
 
   function onGuestClose(entry, reason = 'connection_lost') {
-    if (role !== 'host' || entry.slot === null) return;
+    if (role !== 'host') return;
+    if (entry.slot === null) {
+      // Pre-hello close (ICE failure, guest timeout, closed tab): there is
+      // nothing to remove from the roster, but the lobby status must not
+      // stay stuck on "Player connecting…" — reset exactly that state so a
+      // more informative status (join/ready messages) is never clobbered.
+      if ((status.textContent ?? '').includes('Player connecting')) {
+        setStatus(guests.size
+          ? `${guests.size} player${guests.size > 1 ? 's' : ''} in the room. Share the code to fill the remaining slots.`
+          : 'A player could not finish connecting. Waiting for players to join — share the room code.');
+      }
+      controls();
+      return;
+    }
     guests.delete(entry.slot);
     hostRtts.delete(entry.slot);
     if (!room?.active && !starting) {
@@ -802,38 +877,124 @@ export function mountP2P(root, hooks) {
     if (!new RegExp(`^[${CODE_ALPHABET}]{${CODE_LENGTH}}$`).test(target)) {
       setStatus('Enter the five-letter room code shared by the host.'); return;
     }
-    role = 'guest'; code = target; guestJoinedFlag = true; lobbyReadySent = false;
+    role = 'guest'; code = target; guestJoinedFlag = true; lobbyReadySent = false; guestGreeted = false;
     controls(); setStatus(`Connecting to room ${target}…`);
+    void connectWithRetries(name, target, 0);
+  }
+
+  // A join is several whole negotiation rounds, not one shot: each retry runs
+  // on a FRESH Peer so ICE gathering starts over (the standard remedy when a
+  // candidate pair stalls behind CGNAT/TURN) instead of waiting on a dead
+  // one. The room UI stays up between rounds; LEAVE ROOM cancels everything.
+  async function connectWithRetries(name, target, round) {
     const attempt = ++generation;
-    peer = new Peer(undefined, PEER_OPTIONS);
-    const connectTimeout = setTimeout(() => {
-      if (attempt === generation && !conn?.open) { setStatus('Could not reach that room. Check the code and retry.'); leaveToLobby(); }
-    }, CONNECT_TIMEOUT);
-    peer.on('open', () => {
-      if (attempt !== generation) { clearTimeout(connectTimeout); return; }
-      // Unordered delivery: a lost packet never blocks newer snapshots (no
-      // head-of-line stall). Duplicates and reordering are dropped by tick/seq.
-      conn = peer.connect(ID_PREFIX + target, { reliable: false });
-      conn.on('open', () => {
-        clearTimeout(connectTimeout);
-        setStatus('Connected. Introducing your car…');
-        sendPayload(conn, { type: 'hello', protocol: PROTOCOL, physics: PHYSICS_SHA256, flow: FLOW, nativeCheckpoint: 1, name, visual: hooks.visual(), paint: hooks.paint?.() ?? null });
+    if (round > 0) setStatus(`The direct link did not open — retrying (${round + 1}/${JOIN_ATTEMPTS})…`);
+    const outcome = await openGuestLink(name, target, attempt);
+    if (attempt !== generation) return; // superseded (left the room / new round)
+    if (outcome.status === 'open') return; // handshake continues via onGuestData
+    if (outcome.status === 'fatal') { setStatus(outcome.message); leaveToLobby(); return; }
+    if (round + 1 >= JOIN_ATTEMPTS) {
+      setStatus('Could not reach that room after several tries. Check the code, or ask the host to create a fresh room.');
+      leaveToLobby();
+      return;
+    }
+    setTimeout(() => { if (attempt === generation) void connectWithRetries(name, target, round + 1); },
+      JOIN_RETRY_BACKOFF_MS + round * 600);
+  }
+
+  // One signaling + ICE round. Resolves {status:'open'} once the data channel
+  // is up and hello sent, {status:'fatal', message} for a dead-end cause, or
+  // {status:'retry'} for anything that a fresh round might still fix.
+  function openGuestLink(name, target, attempt) {
+    return new Promise(resolve => {
+      let settled = false, dismantling = false, link = null, guestConn = null;
+      const settle = outcome => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(giveUpTimer);
+        if (outcome.status !== 'open') {
+          // Tear this round down completely: the next round's fresh peer must
+          // not inherit any half-open state from the failed one.
+          dismantling = true;
+          try { guestConn?.close(); } catch {}
+          try { link?.destroy(); } catch {}
+          if (peer === link) { peer = null; conn = null; }
+        }
+        resolve(outcome);
+      };
+      link = new Peer(undefined, PEER_OPTIONS);
+      peer = link;
+      const giveUpTimer = setTimeout(() => settle({ status: 'retry' }), CONNECT_TIMEOUT);
+      link.on('open', () => {
+        if (attempt !== generation) return settle({ status: 'retry' });
+        // Unordered delivery: a lost packet never blocks newer snapshots (no
+        // head-of-line stall). Duplicates and reordering are dropped by tick/seq.
+        try {
+          guestConn = link.connect(ID_PREFIX + target, { reliable: false });
+        } catch {
+          // Negotiation setup failed synchronously (e.g. data-channel API
+          // error): a fresh round rebuilds the peer connection from scratch.
+          return settle({ status: 'retry' });
+        }
+        conn = guestConn;
+        guestConn.on('open', () => {
+          if (attempt !== generation) return settle({ status: 'retry' });
+          setStatus('Connected. Introducing your car…');
+          sendPayload(guestConn, { type: 'hello', protocol: PROTOCOL, physics: PHYSICS_SHA256, flow: FLOW, nativeCheckpoint: 1, name, visual: hooks.visual(), paint: hooks.paint?.() ?? null });
+          armLobbyWatchdog(attempt, name);
+          settle({ status: 'open' });
+        });
+        guestConn.on('data', data => gate(() => { if (attempt === generation) onGuestData(data, attempt); }, data instanceof ArrayBuffer || ArrayBuffer.isView(data) || data?.type === 'pong'));
+        guestConn.on('close', () => {
+          if (dismantling) return; // our own teardown between rounds
+          if (!settled) settle({ status: 'retry' });
+          else if (attempt === generation) onHostLost();
+        });
+        guestConn.on('error', () => {});
+        // ICE feedback: 'failed' arrives long before our own wall-clock
+        // timeout, so the retry starts immediately instead of idling.
+        guestConn.on('iceStateChanged', state => {
+          if (!settled && (state === 'failed' || state === 'closed')) settle({ status: 'retry' });
+        });
       });
-      conn.on('data', data => gate(() => { if (attempt === generation) onGuestData(data, attempt); }, data instanceof ArrayBuffer || ArrayBuffer.isView(data) || data?.type === 'pong'));
-      conn.on('close', () => { if (attempt === generation) onHostLost(); });
-      conn.on('error', () => {});
+      link.on('error', error => {
+        if (settled) return;
+        const type = String(error?.type ?? '');
+        if (type === 'peer-unavailable') settle({ status: 'fatal', message: 'Room not found. Check the code — rooms close when the host leaves.' });
+        else if (type === 'browser-incompatible') settle({ status: 'fatal', message: 'This browser does not support WebRTC data channels.' });
+        else if (type === 'ssl-unavailable') settle({ status: 'fatal', message: 'Secure signaling is unavailable. Reload the page over HTTPS.' });
+        else settle({ status: 'retry' });
+      });
     });
-    peer.on('error', error => {
-      if (attempt !== generation) return;
-      clearTimeout(connectTimeout);
-      setStatus(explain(error));
-      if (!conn?.open) leaveToLobby();
-    });
+  }
+
+  // The channel is open but the host app has not answered the hello yet.
+  // SCTP retransmits, so silence means a signaling-level stall or a stuck
+  // host: re-introduce (the host dedupes hellos) before giving up cleanly.
+  function armLobbyWatchdog(attempt, name, tries = LOBBY_HELLO_RETRIES) {
+    clearTimeout(lobbyWatchdog);
+    lobbyWatchdog = setTimeout(() => {
+      if (attempt !== generation || guestGreeted || !conn?.open) return;
+      if (tries <= 0) {
+        setStatus('Connected to the room, but the host is not responding. Ask them to check their game.');
+        leaveToLobby();
+        return;
+      }
+      sendPayload(conn, { type: 'hello', protocol: PROTOCOL, physics: PHYSICS_SHA256, flow: FLOW, nativeCheckpoint: 1, name, visual: hooks.visual(), paint: hooks.paint?.() ?? null });
+      setStatus('The host has not answered yet — re-introducing your car…');
+      armLobbyWatchdog(attempt, name, tries - 1);
+    }, LOBBY_WAIT_MS);
   }
 
   async function onGuestData(data, attempt) {
     if (data instanceof ArrayBuffer || ArrayBuffer.isView(data)) { onSnapshot(data); return; }
     if (!data || typeof data.type !== 'string') return;
+    // Any host answer to the handshake disarms the lobby watchdog: the room
+    // is alive and the flow continues (lobby -> welcome -> kickoff).
+    if (data.type === 'lobby' || data.type === 'welcome' || data.type === 'cancelled') {
+      guestGreeted = true;
+      clearTimeout(lobbyWatchdog);
+    }
     if (data.type === 'lobby') {
       if (Array.isArray(data.roster)) { roster = data.roster; if (data.mode) mode = data.mode; }
       setStatus(`In the lobby — ${roster?.length ?? 1} player(s) joined. Waiting for the host to start…`);
@@ -1178,6 +1339,13 @@ export function mountP2P(root, hooks) {
     // a frozen arena until the host's own replay finishes.
     skipGoalReplay() {
       if (role === 'guest' && conn?.open && active) sendPayload(conn, { type: 'goal_done' });
+    },
+    // Test-only helpers (surfaced on window under ?physicsDebug=1): drop the
+    // signaling socket to exercise the room's auto re-registration, and read
+    // the live peer state. Never called in normal play.
+    debugDropSignaling() { try { peer?.disconnect(); return true; } catch { return false; } },
+    debugPeerState() {
+      return { open: !!peer?.open, destroyed: !!peer?.destroyed, disconnected: !!peer?.disconnected, roomReady, role, code };
     },
     get active() { return active; },
     get visible() { return !panel.hidden; },
